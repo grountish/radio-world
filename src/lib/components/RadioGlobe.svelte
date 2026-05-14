@@ -34,8 +34,6 @@
 	const pointer = new THREE.Vector2();
 	const raycaster = new THREE.Raycaster();
 	const dummy = new THREE.Object3D();
-	const worldUp = new THREE.Vector3(0, 1, 0);
-	const fallbackUp = new THREE.Vector3(1, 0, 0);
 	const clickMovementThreshold = 8;
 
 	let renderer: THREE.WebGLRenderer | null = null;
@@ -48,13 +46,23 @@
 	let hoveredIndex = -1;
 	let visibleStations: RadioStation[] = [];
 	let clusterKeyByIndex: string[] = [];
-	let clusterLocalIndexByIndex: number[] = [];
-	let clusterSizeByKey = new Map<string, number>();
 	let baseMarkerPositions: THREE.Vector3[] = [];
-	let activeExpandedClusterKey: string | null = null;
+	let hoveredClusterStations = $state<RadioStation[]>([]);
+	let stickyClusterStations = $state<RadioStation[]>([]);
+	let isSticky = $state(false);
+	const displayedClusterStations = $derived(isSticky ? stickyClusterStations : hoveredClusterStations);
+	let currentZoomScale = 1.0;
+	let lastZoomScale = -1;
+	let currentCamDist = 0;
+	let currentNormalizedZoom = 0;
+	let debugOpen = $state(false);
+	let debugStats = { fps: 0, visibleStations: 0, hoveredCount: 0 };
+	let frameCount = 0;
+	let lastFrameTime = Date.now();
 	let pointerDownX = 0;
 	let pointerDownY = 0;
 	let pointerIsActive = false;
+	let lastPointerUpTime = 0;
 	let animationFrame = 0;
 	let resizeObserver: ResizeObserver | null = null;
 
@@ -258,10 +266,13 @@
 			return;
 		}
 
+		const hoveredClusterKey = hoveredIndex >= 0 ? clusterKeyByIndex[hoveredIndex] : null;
+
 		for (let index = 0; index < visibleStations.length; index += 1) {
 			const station = visibleStations[index];
 			const isSelected = selectedStation?.id === station.id;
-			const isHovered = hoveredIndex === index;
+			const isHovered =
+				hoveredClusterKey !== null && clusterKeyByIndex[index] === hoveredClusterKey;
 			const color = isSelected ? selectedColor : isHovered ? hoverColor : baseColor;
 			markerMesh.setColorAt(index, color);
 		}
@@ -275,82 +286,15 @@
 		return `${Math.round(lat / clusterGridDegrees)}:${Math.round(lon / clusterGridDegrees)}`;
 	}
 
-	function getClusterOffset(localIndex: number) {
-		if (localIndex === 0) {
-			return { angle: 0, distance: 0 };
-		}
-
-		let ring = 1;
-		let remaining = localIndex - 1;
-
-		while (remaining >= ring * 6) {
-			remaining -= ring * 6;
-			ring += 1;
-		}
-
-		const slots = ring * 6;
-		const angle = (remaining / slots) * Math.PI * 2 + ((ring + 1) % 2) * (Math.PI / slots);
-		return { angle, distance: ring * 0.018 };
-	}
-
-	function getMarkerPosition(station: RadioStation, localClusterIndex: number) {
-		const basePoint = latLonToCartesian(station.lat, station.lon, radius, 0.04);
-		const origin = new THREE.Vector3(basePoint.x, basePoint.y, basePoint.z);
-		const normal = origin.clone().normalize();
-		const tangent = new THREE.Vector3().crossVectors(worldUp, normal);
-
-		if (tangent.lengthSq() < 1e-6) {
-			tangent.crossVectors(fallbackUp, normal);
-		}
-
-		tangent.normalize();
-		const bitangent = new THREE.Vector3().crossVectors(normal, tangent).normalize();
-		const { angle, distance } = getClusterOffset(localClusterIndex);
-
-		if (distance === 0) {
-			return origin;
-		}
-
-		return origin
-			.clone()
-			.addScaledVector(tangent, Math.cos(angle) * distance)
-			.addScaledVector(bitangent, Math.sin(angle) * distance)
-			.addScaledVector(normal, 0.004 + distance * 0.12);
-	}
-
-	function getSelectedClusterKey() {
-		if (!selectedStation) {
-			return null;
-		}
-
-		return toClusterKey(selectedStation.lat, selectedStation.lon);
-	}
-
-	function getExpandedClusterKey(hoverIndex = hoveredIndex) {
-		if (hoverIndex >= 0) {
-			return clusterKeyByIndex[hoverIndex] ?? null;
-		}
-
-		return getSelectedClusterKey();
-	}
-
-	function applyMarkerLayout(expandedClusterKey: string | null) {
+	function applyMarkerLayout() {
 		if (!markerMesh || !markerHitMesh) {
 			return;
 		}
 
 		for (let index = 0; index < visibleStations.length; index += 1) {
-			const station = visibleStations[index];
-			const clusterKey = clusterKeyByIndex[index];
-			const localClusterIndex = clusterLocalIndexByIndex[index];
-			const clusterSize = clusterSizeByKey.get(clusterKey) ?? 1;
-			const point =
-				expandedClusterKey && clusterKey === expandedClusterKey && clusterSize > 1
-					? getMarkerPosition(station, localClusterIndex)
-					: baseMarkerPositions[index];
-			const voteWeight = Math.min(station.votes / 600, 1);
-			const markerScale = 0.4 + voteWeight * 0.28;
-			const hitScale = 0.95 + voteWeight * 0.38;
+			const point = baseMarkerPositions[index];
+			const markerScale = 0.5 * currentZoomScale;
+			const hitScale = 1.1 * currentZoomScale;
 
 			dummy.position.copy(point);
 			dummy.scale.setScalar(markerScale);
@@ -364,7 +308,6 @@
 
 		markerMesh.instanceMatrix.needsUpdate = true;
 		markerHitMesh.instanceMatrix.needsUpdate = true;
-		activeExpandedClusterKey = expandedClusterKey;
 	}
 
 	function rebuildMarkers() {
@@ -374,11 +317,11 @@
 
 		visibleStations = stations.slice();
 		clusterKeyByIndex = [];
-		clusterLocalIndexByIndex = [];
-		clusterSizeByKey = new Map<string, number>();
 		baseMarkerPositions = [];
 		hoveredIndex = -1;
-		activeExpandedClusterKey = null;
+		hoveredClusterStations = [];
+		stickyClusterStations = [];
+		isSticky = false;
 		onhover?.(null);
 
 		if (markerMesh) {
@@ -415,22 +358,18 @@
 
 		for (let index = 0; index < visibleStations.length; index += 1) {
 			const station = visibleStations[index];
-			const clusterKey = toClusterKey(station.lat, station.lon);
-			const localClusterIndex = clusterSizeByKey.get(clusterKey) ?? 0;
-			clusterKeyByIndex[index] = clusterKey;
-			clusterLocalIndexByIndex[index] = localClusterIndex;
-			clusterSizeByKey.set(clusterKey, localClusterIndex + 1);
+			clusterKeyByIndex[index] = toClusterKey(station.lat, station.lon);
 			const basePoint = latLonToCartesian(station.lat, station.lon, radius, 0.04);
 			baseMarkerPositions[index] = new THREE.Vector3(basePoint.x, basePoint.y, basePoint.z);
 		}
 
 		earthGroup.add(markerMesh);
 		earthGroup.add(markerHitMesh);
-		applyMarkerLayout(getExpandedClusterKey(-1));
+		applyMarkerLayout();
 		updateMarkerColors();
 	}
 
-	function getIntersection(event: PointerEvent) {
+	function getIntersection(event: MouseEvent) {
 		if (!renderer || !camera || !markerHitMesh) {
 			return null;
 		}
@@ -445,31 +384,63 @@
 	}
 
 	function clearHover() {
-		if (hoveredIndex === -1) {
+		if (hoveredIndex === -1 && hoveredClusterStations.length === 0) {
 			return;
 		}
 
 		hoveredIndex = -1;
+		hoveredClusterStations = [];
 		onhover?.(null);
-		applyMarkerLayout(getSelectedClusterKey());
 		updateMarkerColors();
 	}
 
-	function handlePointerMove(event: PointerEvent) {
-		const nextIndex = getIntersection(event);
-		const nextExpandedClusterKey =
-			typeof nextIndex === 'number' ? clusterKeyByIndex[nextIndex] : getSelectedClusterKey();
-
-		if (nextExpandedClusterKey !== activeExpandedClusterKey) {
-			applyMarkerLayout(nextExpandedClusterKey);
+	function handleContextMenu(event: MouseEvent) {
+		event.preventDefault();
+		if (!(event.target instanceof HTMLCanvasElement)) {
+			return;
 		}
+		const index = getIntersection(event);
+		if (typeof index === 'number') {
+			const clusterKey = clusterKeyByIndex[index];
+			stickyClusterStations = visibleStations.filter((_, i) => clusterKeyByIndex[i] === clusterKey);
+			isSticky = true;
+		} else {
+			stickyClusterStations = [];
+			isSticky = false;
+		}
+	}
 
-		if (nextIndex === hoveredIndex) {
+	function handlePointerMove(event: PointerEvent) {
+		if (!(event.target instanceof HTMLCanvasElement)) {
 			return;
 		}
 
-		hoveredIndex = nextIndex ?? -1;
-		onhover?.(hoveredIndex >= 0 ? visibleStations[hoveredIndex] : null);
+		// Skip hover updates for 300ms after dragging to avoid flickering from damping
+		if (Date.now() - lastPointerUpTime < 300) {
+			return;
+		}
+
+		const nextIndex = getIntersection(event);
+		const nextHoveredIndex = nextIndex ?? -1;
+
+		if (nextHoveredIndex === hoveredIndex) {
+			return;
+		}
+
+		hoveredIndex = nextHoveredIndex;
+
+		if (hoveredIndex >= 0) {
+			const clusterKey = clusterKeyByIndex[hoveredIndex];
+			hoveredClusterStations = visibleStations.filter(
+				(_, i) => clusterKeyByIndex[i] === clusterKey
+			);
+			onhover?.(visibleStations[hoveredIndex]);
+		} else {
+			// Don't clear the panel — mouse is crossing empty space toward the list.
+			// clearHover() on pointerleave handles the full reset.
+			onhover?.(null);
+		}
+
 		updateMarkerColors();
 	}
 
@@ -489,6 +460,7 @@
 		}
 
 		pointerIsActive = false;
+		lastPointerUpTime = Date.now();
 		const movement = Math.hypot(event.clientX - pointerDownX, event.clientY - pointerDownY);
 		if (movement > clickMovementThreshold) {
 			return;
@@ -511,8 +483,32 @@
 			return;
 		}
 
+		frameCount++;
+		const now = Date.now();
+		if (now - lastFrameTime >= 1000) {
+			debugStats.fps = frameCount;
+			debugStats.visibleStations = visibleStations.length;
+			frameCount = 0;
+			lastFrameTime = now;
+		}
+
 		animationFrame = window.requestAnimationFrame(animate);
 		controls?.update();
+
+		const camDist = camera.position.length();
+		const t = Math.max(0, Math.min(1, (camDist - 1.15) / (8 - 1.15)));
+		currentCamDist = camDist;
+		currentNormalizedZoom = t;
+		currentZoomScale = 0.049 + 0.951 * t;
+		if (Math.abs(currentZoomScale - lastZoomScale) > 0.005) {
+			lastZoomScale = currentZoomScale;
+			applyMarkerLayout();
+			updateMarkerColors();
+			if (controls) {
+				controls.rotateSpeed = 0.3 + 0.7 * t;
+			}
+		}
+
 		renderer.render(scene, camera);
 	}
 
@@ -532,10 +528,9 @@
 			renderer.setClearColor(0x000000, 0);
 
 			controls = new OrbitControls(camera, renderer.domElement);
-			controls.enableDamping = true;
+			controls.enableDamping = false;
 			controls.enablePan = false;
-			controls.autoRotate = true;
-			controls.autoRotateSpeed = 0.004;
+			controls.autoRotate = false;
 			controls.minDistance = 1.15;
 			controls.maxDistance = 8;
 			controls.zoomSpeed = 1.2;
@@ -588,6 +583,7 @@
 			container.addEventListener('pointerup', handlePointerUp);
 			container.addEventListener('pointercancel', resetPointerState);
 			container.addEventListener('pointerleave', clearHover);
+			container.addEventListener('contextmenu', handleContextMenu);
 			updateRendererSize();
 			rebuildMarkers();
 			animate();
@@ -604,6 +600,7 @@
 			container?.removeEventListener('pointerup', handlePointerUp);
 			container?.removeEventListener('pointercancel', resetPointerState);
 			container?.removeEventListener('pointerleave', clearHover);
+			container?.removeEventListener('contextmenu', handleContextMenu);
 			controls?.dispose();
 
 			if (scene) {
@@ -619,13 +616,6 @@
 	});
 
 	$effect(() => {
-		const nextExpandedClusterKey = getExpandedClusterKey();
-		if (nextExpandedClusterKey !== activeExpandedClusterKey) {
-			applyMarkerLayout(nextExpandedClusterKey);
-		}
-	});
-
-	$effect(() => {
 		updateMarkerColors();
 	});
 </script>
@@ -638,6 +628,61 @@
 		aria-label="Interactive 3D globe showing the coordinates of radio stations around the world"
 	>
 		<canvas bind:this={canvas}></canvas>
+
+		{#if displayedClusterStations.length > 0}
+			<div
+				class="cluster-panel"
+				class:is-sticky={isSticky}
+				onpointerdown={(e) => e.stopPropagation()}
+				onpointerup={(e) => e.stopPropagation()}
+			>
+				<div class="cluster-header">
+					<span class="cluster-label">
+						{displayedClusterStations.length}
+						{displayedClusterStations.length === 1 ? 'station' : 'stations'}
+						{#if isSticky}&nbsp;· pinned{/if}
+					</span>
+					{#if isSticky}
+						<button
+							type="button"
+							class="cluster-close"
+							aria-label="Unpin cluster"
+							onclick={() => { isSticky = false; stickyClusterStations = []; }}
+						>×</button>
+					{/if}
+				</div>
+				<ul class="cluster-list">
+					{#each displayedClusterStations as station (station.id)}
+						<li>
+							<button type="button" class="cluster-item" onclick={() => onselect?.(station)}>
+								<span class="cluster-item-name">{station.name}</span>
+								{#if station.country}
+									<span class="cluster-item-country">{station.country}</span>
+								{/if}
+							</button>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
+
+		<div class="debug-panel" class:open={debugOpen}>
+			<button class="debug-toggle" type="button" onclick={() => (debugOpen = !debugOpen)}>
+				{debugOpen ? '▾' : '▸'} {debugStats.fps} fps
+			</button>
+			{#if debugOpen}
+				<div class="debug-info">
+					<div class="debug-row">
+						<span class="debug-label">stations:</span>
+						<span class="debug-value">{debugStats.visibleStations}</span>
+					</div>
+					<div class="debug-row">
+						<span class="debug-label">hovered:</span>
+						<span class="debug-value">{hoveredClusterStations.length}</span>
+					</div>
+				</div>
+			{/if}
+		</div>
 	</div>
 
 	{#if webglError}
@@ -647,7 +692,6 @@
 		</div>
 	{/if}
 
-	<div class="legend">Drag to orbit, scroll to zoom, click a marker to inspect a station.</div>
 </div>
 
 <style>
@@ -675,20 +719,103 @@
 		cursor: grabbing;
 	}
 
-	.legend {
+	.cluster-panel {
 		position: absolute;
-		left: 1.25rem;
-		bottom: 1.25rem;
-		padding: 0;
-		border-radius: 0;
-		background: transparent;
+		right: 1rem;
+		top: 50%;
+		transform: translateY(-50%);
+		z-index: 4;
+		width: min(18rem, calc(100vw - 2rem));
+		max-height: 60dvh;
+		display: flex;
+		flex-direction: column;
+		background: rgba(0, 0, 0, 0.82);
+		backdrop-filter: blur(10px);
+		pointer-events: auto;
+		overflow: hidden;
+	}
+
+	.cluster-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.55rem 0.9rem 0.45rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+		flex-shrink: 0;
+	}
+
+	.is-sticky .cluster-header {
+		border-left: 2px solid #f18c34;
+		padding-left: calc(0.9rem - 2px);
+	}
+
+	.cluster-label {
+		margin: 0;
+		color: #f18c34;
+		font-size: 0.64rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	.cluster-close {
 		border: 0;
+		background: none;
+		color: rgba(242, 230, 210, 0.5);
+		font: inherit;
+		font-size: 1rem;
+		line-height: 1;
+		cursor: pointer;
+		padding: 0 0 0 0.5rem;
+		transition: color 0.1s;
+	}
+
+	.cluster-close:hover {
+		color: #f18c34;
+	}
+
+	.cluster-list {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		overflow-y: auto;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(241, 140, 52, 0.3) transparent;
+	}
+
+	.cluster-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		width: 100%;
+		padding: 0.55rem 0.9rem;
+		border: 0;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		background: transparent;
+		color: #ffffff;
+		text-align: left;
+		cursor: pointer;
+		font: inherit;
+		transition: background 0.1s;
+	}
+
+	.cluster-item:hover {
+		background: rgba(241, 140, 52, 0.12);
+	}
+
+	.cluster-item:last-child {
+		border-bottom: 0;
+	}
+
+	.cluster-item-name {
+		font-size: 0.84rem;
+		line-height: 1.3;
+		text-transform: lowercase;
+	}
+
+	.cluster-item-country {
+		font-size: 0.66rem;
 		color: rgba(242, 230, 210, 0.56);
-		font-size: 0.72rem;
-		letter-spacing: 0;
-		font-family:
-			ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono',
-			monospace;
+		text-transform: lowercase;
 	}
 
 	.fallback {
@@ -706,12 +833,62 @@
 		margin: 0.4rem 0;
 	}
 
-	@media (max-width: 50rem) {
-		.legend {
-			left: 1rem;
-			right: 1rem;
-			bottom: 1rem;
-			border-radius: 1rem;
-		}
+	.debug-panel {
+		position: absolute;
+		bottom: 1rem;
+		right: 1rem;
+		background: rgba(0, 0, 0, 0.75);
+		backdrop-filter: blur(10px);
+		border: 1px solid rgba(241, 140, 52, 0.3);
+		border-radius: 2px;
+		z-index: 10;
+		pointer-events: auto;
 	}
+
+	.debug-toggle {
+		display: block;
+		width: 100%;
+		padding: 0.5rem 0.75rem;
+		border: 0;
+		background: transparent;
+		color: rgba(242, 230, 210, 0.7);
+		font-size: 0.65rem;
+		text-transform: lowercase;
+		cursor: pointer;
+		font: inherit;
+		text-align: left;
+		transition: color 0.1s;
+	}
+
+	.debug-toggle:hover {
+		color: #f18c34;
+	}
+
+	.debug-info {
+		padding: 0.5rem 0.75rem;
+		border-top: 1px solid rgba(241, 140, 52, 0.2);
+		font-size: 0.62rem;
+		font-family: 'Courier New', monospace;
+		color: rgba(242, 230, 210, 0.8);
+	}
+
+	.debug-row {
+		display: flex;
+		gap: 0.5rem;
+		margin: 0.2rem 0;
+		justify-content: space-between;
+	}
+
+	.debug-label {
+		color: rgba(242, 230, 210, 0.6);
+		min-width: 10rem;
+	}
+
+	.debug-value {
+		color: #f18c34;
+		font-weight: 500;
+		text-align: right;
+		min-width: 4rem;
+	}
+
 </style>

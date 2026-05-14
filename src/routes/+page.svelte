@@ -12,7 +12,6 @@
 	let query = $state('');
 	let country = $state('all');
 	let selectedStation = $state<RadioStation | null>(null);
-	let hoveredStation = $state<RadioStation | null>(null);
 	let audioElement = $state<HTMLAudioElement | null>(null);
 	let isPlaying = $state(false);
 	let isBuffering = $state(false);
@@ -20,9 +19,20 @@
 	let volume = $state(0.85);
 	let elapsed = $state(0);
 	let lastAutoplayStationId = '';
+	let favoriteIds = $state<Set<string>>(new Set());
+	let favoritesOpen = $state(false);
 
 	onMount(async () => {
 		globeModule = import('$lib/components/RadioGlobe.svelte');
+
+		const saved = localStorage.getItem('radio-world-favorites');
+		if (saved) {
+			try {
+				favoriteIds = new Set(JSON.parse(saved) as string[]);
+			} catch {
+				// ignore malformed storage
+			}
+		}
 
 		try {
 			const response = await fetch('/api/stations');
@@ -86,12 +96,20 @@
 		}).format(new Date(stats.updatedAt));
 	});
 
+	const favoriteStations = $derived(stations.filter((s) => favoriteIds.has(s.id)));
+
 	function pickStation(station: RadioStation | null) {
 		selectedStation = station;
 	}
 
-	function previewStation(station: RadioStation | null) {
-		hoveredStation = station;
+	function toggleFavorite(id: string) {
+		const next = new Set(favoriteIds);
+		if (next.has(id)) {
+			next.delete(id);
+		} else {
+			next.add(id);
+		}
+		favoriteIds = next;
 	}
 
 	function clearFilters() {
@@ -246,6 +264,10 @@
 			element.removeEventListener('error', handlePause);
 		};
 	});
+
+	$effect(() => {
+		localStorage.setItem('radio-world-favorites', JSON.stringify([...favoriteIds]));
+	});
 </script>
 
 <div class="page-shell">
@@ -261,12 +283,7 @@
 		{:else if globeModule}
 			{#await globeModule then module}
 				{@const Globe = module.default}
-				<Globe
-					stations={visibleStations}
-					{selectedStation}
-					onselect={pickStation}
-					onhover={previewStation}
-				/>
+				<Globe stations={visibleStations} {selectedStation} onselect={pickStation} />
 			{:catch}
 				<div class="loading-card error-card">
 					<p>The 3D globe component could not be loaded.</p>
@@ -274,24 +291,12 @@
 			{/await}
 		{/if}
 
-		{#if hoveredStation}
-			<div class="hover-pill">
-				<span class="hover-label">hovering</span>
-				<p>{hoveredStation.name}</p>
-			</div>
-		{/if}
-
 		<div class="hud hud-top">
 			<div class="filter-row">
 				<input bind:value={query} placeholder="Search station, country, language" />
-				<select bind:value={country}>
-					<option value="all">All countries</option>
-					{#each countryOptions as option (option)}
-						<option value={option}>{option}</option>
-					{/each}
-				</select>
+
 				{#if query || country !== 'all'}
-					<button class="ghost-button" type="button" onclick={clearFilters}>Reset</button>
+					<button class="ghost-button" type="button" onclick={clearFilters} aria-label="Clear filters">×</button>
 				{/if}
 			</div>
 
@@ -301,6 +306,26 @@
 				<span>{isLoading ? '...' : (stats?.countries ?? 0)} countries</span>
 				<span>{isLoading ? '...' : languageCount} languages</span>
 			</div>
+		</div>
+
+		<div class="hud hud-fav-panel">
+			<button type="button" class="fav-toggle" onclick={() => (favoritesOpen = !favoritesOpen)}>
+				{favoritesOpen ? '▾' : '▸'} ♥ {favoriteIds.size}
+			</button>
+			{#if favoritesOpen}
+				<div class="fav-list">
+					{#if favoriteStations.length === 0}
+						<p class="fav-empty">no favorites yet</p>
+					{:else}
+						{#each favoriteStations as station (station.id)}
+							<button type="button" class="fav-item" onclick={() => pickStation(station)}>
+								<span class="fav-name">{station.name}</span>
+								{#if station.country}<span class="fav-country">{station.country}</span>{/if}
+							</button>
+						{/each}
+					{/if}
+				</div>
+			{/if}
 		</div>
 
 		<div class="hud hud-bottom">
@@ -316,6 +341,15 @@
 								{/if}
 							</p>
 						</div>
+						<button
+							type="button"
+							class="fav-button"
+							class:is-faved={favoriteIds.has(spotlight.id)}
+							onclick={() => toggleFavorite(spotlight.id)}
+							aria-label={favoriteIds.has(spotlight.id) ? 'Remove from favorites' : 'Add to favorites'}
+						>
+							{favoriteIds.has(spotlight.id) ? '♥' : '♡'}
+						</button>
 						{#if spotlight.favicon}
 							<img alt="" class="station-icon" src={spotlight.favicon} loading="lazy" />
 						{/if}
@@ -415,9 +449,16 @@
 					</div>
 				</div>
 			{:else}
-				<p class="empty-copy">
-					Hover a marker to preview its name. Click a marker to inspect a station.
-				</p>
+				<div class="empty-copy">
+					<dl class="hint-grid">
+						<dt>drag</dt>       <dd>orbit the globe</dd>
+						<dt>scroll</dt>     <dd>zoom in / out</dd>
+						<dt>hover</dt>      <dd>preview stations at that location</dd>
+						<dt>click</dt>      <dd>select a station and start listening</dd>
+						<dt>right-click</dt><dd>pin the cluster list so you can browse it</dd>
+						<dt>pin + right-click</dt><dd>switch pinned cluster to another location</dd>
+					</dl>
+				</div>
 			{/if}
 		</div>
 	</section>
@@ -443,8 +484,8 @@
 	}
 
 	.page-shell {
-		--panel-bg: rgba(0, 0, 0, 0.72);
-		--text-soft: rgba(255, 255, 255, 0.62);
+		--panel-bg: rgba(0, 0, 0, 0.54);
+		--text-soft: rgba(255, 255, 255);
 		--ink: #ffffff;
 		--orange: #f18c34;
 		height: 100dvh;
@@ -469,36 +510,6 @@
 		color: #ffd6dd;
 	}
 
-	.hover-pill {
-		position: absolute;
-		right: 1rem;
-		bottom: 1rem;
-		z-index: 4;
-		display: grid;
-		gap: 0.15rem;
-		min-width: min(18rem, calc(100vw - 2rem));
-		max-width: min(24rem, calc(100vw - 2rem));
-		padding: 0.7rem 0.9rem 0.75rem;
-		background: rgba(0, 0, 0, 0.78);
-		backdrop-filter: blur(10px);
-		color: var(--ink);
-		pointer-events: none;
-	}
-
-	.hover-pill p {
-		margin: 0;
-		font-size: 0.94rem;
-		line-height: 1.3;
-		text-transform: lowercase;
-	}
-
-	.hover-label {
-		color: var(--orange);
-		font-size: 0.64rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-	}
-
 	.hud {
 		position: absolute;
 		left: 1rem;
@@ -508,10 +519,10 @@
 	}
 
 	.hud-top {
-		top: 1rem;
+		top: 0.6rem;
 		display: grid;
-		gap: 0.75rem;
-		max-width: min(46rem, calc(100vw - 2rem));
+		gap: 0.35rem;
+		max-width: min(18rem, calc(100vw - 2rem));
 	}
 
 	.hud-bottom {
@@ -533,52 +544,51 @@
 	}
 
 	.filter-row {
-		display: grid;
-		grid-template-columns: minmax(0, 1.2fr) minmax(10rem, 0.8fr) auto;
-		gap: 0.6rem;
-		padding: 0.55rem;
+		display: flex;
+		gap: 0.3rem;
+		padding: 0;
 	}
 
 	.metric-row {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.5rem;
+		gap: 0.3rem;
 	}
 
 	.metric-row span {
-		padding: 0.25rem 0.45rem;
-		background: rgba(0, 0, 0, 0.58);
-		color: var(--text-soft);
-		font-size: 0.72rem;
+		padding: 0.18rem 0.35rem;
+		background: rgba(0, 0, 0, 0.4);
+		color: rgba(255, 255, 255, 0.85);
+		font-size: 0.62rem;
 		letter-spacing: 0.02em;
 		text-transform: lowercase;
 	}
 
 	input:not([type='range']),
-	select,
 	button {
 		font: inherit;
 	}
 
-	input:not([type='range']),
-	select {
+	input:not([type='range']) {
 		width: 100%;
 		border: 0;
 		border-radius: 0;
-		background: rgba(0, 0, 0, 0.72);
+		background: rgba(0, 0, 0, 0.54);
 		color: var(--ink);
-		padding: 0.75rem 0.8rem;
+		padding: 0.3rem 0.6rem;
+		font-size: 0.72rem;
 		text-transform: lowercase;
 	}
 
 	.ghost-button {
 		border: 0;
 		border-radius: 0;
-		padding: 0.62rem 0.82rem;
-		background: rgba(0, 0, 0, 0.72);
+		padding: 0.3rem 0.5rem;
+		background: rgba(0, 0, 0, 0.54);
 		color: var(--orange);
+		font-size: 1rem;
+		line-height: 1;
 		cursor: pointer;
-		text-transform: lowercase;
 	}
 
 	.spotlight-meta {
@@ -658,11 +668,11 @@
 		width: 2.4rem;
 		height: 2.4rem;
 		border-radius: 0;
-		background: rgba(0, 0, 0, 0.72);
+		background: rgba(0, 0, 0, 0.54);
 	}
 
 	.player-button.playing {
-		background: rgba(0, 0, 0, 0.72);
+		background: rgba(0, 0, 0, 0.54);
 	}
 
 	.play-icon {
@@ -882,20 +892,33 @@
 
 	.empty-copy {
 		margin: 0;
-		padding: 0.85rem 1rem;
-		line-height: 1.6;
+		padding: 0.75rem 1rem;
+	}
+
+	.hint-grid {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 0.22rem 0.9rem;
+		margin: 0;
+	}
+
+	.hint-grid dt {
+		color: var(--orange);
+		font-size: 0.66rem;
+		text-transform: lowercase;
+		white-space: nowrap;
+		padding-top: 0.05em;
+	}
+
+	.hint-grid dd {
+		margin: 0;
 		color: var(--text-soft);
-		font-size: 0.78rem;
+		font-size: 0.66rem;
+		text-transform: lowercase;
+		line-height: 1.4;
 	}
 
 	@media (max-width: 42rem) {
-		.hover-pill {
-			right: 0.75rem;
-			bottom: 0.75rem;
-			min-width: 0;
-			width: min(20rem, calc(100vw - 1.5rem));
-		}
-
 		.hud {
 			left: 0.75rem;
 			right: 0.75rem;
@@ -944,5 +967,104 @@
 		100% {
 			transform: translateX(-50%);
 		}
+	}
+
+	.hud-fav-panel {
+		top: 0.6rem;
+		right: 1rem;
+		left: auto;
+		max-width: 16rem;
+		pointer-events: auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 0.3rem;
+	}
+
+	.fav-toggle {
+		border: 0;
+		border-radius: 0;
+		padding: 0.3rem 0.5rem;
+		background: rgba(0, 0, 0, 0.54);
+		color: var(--text-soft);
+		font-size: 0.85rem;
+		line-height: 1;
+		cursor: pointer;
+		font-weight: 500;
+	}
+
+	.fav-toggle:hover {
+		color: var(--orange);
+	}
+
+	.fav-list {
+		background: var(--panel-bg);
+		backdrop-filter: blur(10px);
+		margin-top: 0.3rem;
+		max-height: 60vh;
+		overflow-y: auto;
+		border-radius: 0;
+	}
+
+	.fav-empty {
+		margin: 0;
+		padding: 0.75rem 1rem;
+		color: var(--text-soft);
+		font-size: 0.72rem;
+		text-align: center;
+		text-transform: lowercase;
+	}
+
+	.fav-item {
+		width: 100%;
+		border: 0;
+		background: transparent;
+		color: var(--ink);
+		padding: 0.6rem 1rem;
+		font-size: 0.78rem;
+		text-align: left;
+		cursor: pointer;
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		font-family: inherit;
+	}
+
+	.fav-item:hover {
+		background: rgba(241, 140, 52, 0.1);
+	}
+
+	.fav-name {
+		text-transform: lowercase;
+		font-weight: 500;
+	}
+
+	.fav-country {
+		color: var(--text-soft);
+		font-size: 0.66rem;
+		text-transform: lowercase;
+	}
+
+	.fav-button {
+		border: 0;
+		background: none;
+		color: var(--text-soft);
+		font-size: 1.2rem;
+		line-height: 1;
+		cursor: pointer;
+		padding: 0.2rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.6rem;
+		min-height: 1.6rem;
+	}
+
+	.fav-button:hover {
+		color: var(--orange);
+	}
+
+	.fav-button.is-faved {
+		color: var(--orange);
 	}
 </style>
