@@ -131,6 +131,9 @@
 			}
 		}
 
+		const loadStartTime = performance.now();
+		const minLoadingTime = 1000;
+
 		try {
 			const startTime = performance.now();
 			const response = await fetch('/api/stations');
@@ -147,6 +150,11 @@
 			error =
 				cause instanceof Error ? cause.message : 'The live radio directory could not be reached.';
 		} finally {
+			const elapsedTime = performance.now() - loadStartTime;
+			const remainingTime = Math.max(0, minLoadingTime - elapsedTime);
+			if (remainingTime > 0) {
+				await new Promise((resolve) => setTimeout(resolve, remainingTime));
+			}
 			isLoading = false;
 		}
 
@@ -475,7 +483,13 @@
 	<section class="stage">
 		{#if isLoading}
 			<div class="loading-card">
-				<p>Loading live station coordinates…</p>
+				<p>
+					<ScrambleText
+						text="Loading live station coordinates…"
+						animateInitial={true}
+						speed="slow"
+					/>
+				</p>
 			</div>
 		{:else if error}
 			<div class="loading-card error-card">
@@ -562,9 +576,9 @@
 		</div>
 
 		<div class="hud hud-bottom">
-				{#if spotlight}
-					<div class="spotlight-meta">
-						{#if isCompactViewport}
+			{#if spotlight}
+				<div class="spotlight-meta">
+					{#if isCompactViewport}
 						<div class="compact-station-row">
 							<div class="player-controls compact-player-controls">
 								<button
@@ -611,7 +625,7 @@
 							</button>
 						</div>
 
-							<!-- <ScrambleText
+						<!-- <ScrambleText
 								as="p"
 								className="station-subtitle compact-station-subtitle"
 								text={spotlightSubtitle}
@@ -1230,15 +1244,14 @@
 	.progress-fill.buffering {
 		width: 100%;
 		opacity: 0.95;
-		background:
-			linear-gradient(
-				90deg,
-				rgba(241, 140, 52, 0.08) 0%,
-				rgba(241, 140, 52, 0.24) 30%,
-				rgba(255, 217, 166, 0.9) 50%,
-				rgba(241, 140, 52, 0.24) 70%,
-				rgba(241, 140, 52, 0.08) 100%
-			);
+		background: linear-gradient(
+			90deg,
+			rgba(241, 140, 52, 0.08) 0%,
+			rgba(241, 140, 52, 0.24) 30%,
+			rgba(255, 217, 166, 0.9) 50%,
+			rgba(241, 140, 52, 0.24) 70%,
+			rgba(241, 140, 52, 0.08) 100%
+		);
 		background-size: 220% 100%;
 		background-position: 100% 0;
 		animation: loading-sweep 1.35s linear infinite;
