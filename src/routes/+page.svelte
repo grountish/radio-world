@@ -18,6 +18,7 @@
 	let playerExpanded = $state(false);
 	let isPlaying = $state(false);
 	let isBuffering = $state(false);
+	let playbackStatus = $state<'idle' | 'buffering' | 'ready' | 'error'>('idle');
 	let isMuted = $state(false);
 	let volume = $state(0.85);
 	let elapsed = $state(0);
@@ -261,21 +262,29 @@
 		elapsed = audioElement.currentTime;
 	}
 
+	function setPlaybackStatus(nextStatus: 'idle' | 'buffering' | 'ready' | 'error') {
+		playbackStatus = nextStatus;
+		isBuffering = nextStatus === 'buffering';
+	}
+
 	async function togglePlayback() {
 		if (!audioElement) {
 			return;
 		}
 
 		if (audioElement.paused) {
+			setPlaybackStatus('buffering');
 			try {
 				await audioElement.play();
 			} catch (error) {
+				setPlaybackStatus('error');
 				console.warn('Manual playback failed', error);
 			}
 			return;
 		}
 
 		audioElement.pause();
+		setPlaybackStatus('ready');
 	}
 
 	function updateVolume(nextVolume: number) {
@@ -319,11 +328,12 @@
 
 			audioElement.pause();
 			audioElement.currentTime = 0;
-			isBuffering = true;
+			setPlaybackStatus('buffering');
 
 			try {
 				await audioElement.play();
 			} catch (error) {
+				setPlaybackStatus('error');
 				console.warn('Autoplay failed for selected station', error);
 			}
 		});
@@ -340,18 +350,23 @@
 
 		const handlePlay = () => {
 			isPlaying = true;
-			isBuffering = false;
+			setPlaybackStatus('ready');
 		};
 		const handlePause = () => {
 			isPlaying = false;
-			isBuffering = false;
+			setPlaybackStatus(selectedStation ? 'ready' : 'idle');
 		};
 		const handleWaiting = () => {
-			isBuffering = true;
+			setPlaybackStatus('buffering');
 		};
 		const handlePlaying = () => {
 			isPlaying = true;
-			isBuffering = false;
+			setPlaybackStatus('ready');
+		};
+		const handleCanPlay = () => {
+			if (!isPlaying) {
+				setPlaybackStatus('ready');
+			}
 		};
 		const handleTimeUpdate = () => {
 			elapsed = element.currentTime;
@@ -362,18 +377,23 @@
 		};
 		const handleEmptied = () => {
 			isPlaying = false;
-			isBuffering = false;
+			setPlaybackStatus(selectedStation ? 'buffering' : 'idle');
 			elapsed = 0;
+		};
+		const handleError = () => {
+			isPlaying = false;
+			setPlaybackStatus('error');
 		};
 
 		element.addEventListener('play', handlePlay);
 		element.addEventListener('pause', handlePause);
 		element.addEventListener('waiting', handleWaiting);
 		element.addEventListener('playing', handlePlaying);
+		element.addEventListener('canplay', handleCanPlay);
 		element.addEventListener('timeupdate', handleTimeUpdate);
 		element.addEventListener('volumechange', handleVolumeChange);
 		element.addEventListener('emptied', handleEmptied);
-		element.addEventListener('error', handlePause);
+		element.addEventListener('error', handleError);
 		syncAudioState();
 
 		return () => {
@@ -381,10 +401,11 @@
 			element.removeEventListener('pause', handlePause);
 			element.removeEventListener('waiting', handleWaiting);
 			element.removeEventListener('playing', handlePlaying);
+			element.removeEventListener('canplay', handleCanPlay);
 			element.removeEventListener('timeupdate', handleTimeUpdate);
 			element.removeEventListener('volumechange', handleVolumeChange);
 			element.removeEventListener('emptied', handleEmptied);
-			element.removeEventListener('error', handlePause);
+			element.removeEventListener('error', handleError);
 		};
 	});
 
@@ -628,7 +649,12 @@
 							</div>
 
 							<div class="progress-rail" aria-hidden="true">
-								<div class:buffering={isBuffering} class="progress-fill"></div>
+								<div
+									class="progress-fill"
+									class:buffering={playbackStatus === 'buffering'}
+									class:ready={playbackStatus === 'ready'}
+									class:error={playbackStatus === 'error'}
+								></div>
 							</div>
 
 							<div class="volume-row">
@@ -1098,22 +1124,50 @@
 
 	.progress-rail {
 		position: relative;
-		height: 1px;
+		height: 2px;
 		border-radius: 0;
-		background: rgba(242, 230, 210, 0.22);
+		background: rgba(242, 230, 210, 0.14);
 		overflow: hidden;
 	}
 
 	.progress-fill {
 		position: absolute;
 		inset: 0;
-		width: 38%;
+		width: 0;
 		border-radius: 0;
-		background: var(--orange);
+		background: rgba(241, 140, 52, 0.5);
+		transition:
+			width 180ms ease,
+			background-color 180ms ease,
+			opacity 180ms ease,
+			background-position 180ms ease;
 	}
 
 	.progress-fill.buffering {
-		animation: drift 1.2s ease-in-out infinite;
+		width: 100%;
+		opacity: 0.95;
+		background:
+			linear-gradient(
+				90deg,
+				rgba(241, 140, 52, 0.08) 0%,
+				rgba(241, 140, 52, 0.24) 30%,
+				rgba(255, 217, 166, 0.9) 50%,
+				rgba(241, 140, 52, 0.24) 70%,
+				rgba(241, 140, 52, 0.08) 100%
+			);
+		background-size: 220% 100%;
+		background-position: 100% 0;
+		animation: loading-sweep 1.35s linear infinite;
+	}
+
+	.progress-fill.ready {
+		width: 100%;
+		background: var(--orange);
+	}
+
+	.progress-fill.error {
+		width: 100%;
+		background: #c53b2c;
 	}
 
 	.volume-slider {
@@ -1401,15 +1455,12 @@
 		}
 	}
 
-	@keyframes drift {
+	@keyframes loading-sweep {
 		0% {
-			transform: translateX(-50%);
-		}
-		50% {
-			transform: translateX(120%);
+			background-position: 100% 0;
 		}
 		100% {
-			transform: translateX(-50%);
+			background-position: -120% 0;
 		}
 	}
 
