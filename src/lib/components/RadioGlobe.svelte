@@ -978,4 +978,10 @@
 		color: #ff6b6b;
 	}
 
+	@media (max-width: 768px) {
+		.debug-panel {
+			display: none;
+		}
+	}
+
 </style>

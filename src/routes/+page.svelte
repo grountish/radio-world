@@ -14,6 +14,7 @@
 	let hiQualityOnly = $state(false);
 	let selectedStation = $state<RadioStation | null>(null);
 	let audioElement = $state<HTMLAudioElement | null>(null);
+	let playerExpanded = $state(false);
 	let isPlaying = $state(false);
 	let isBuffering = $state(false);
 	let isMuted = $state(false);
@@ -435,23 +436,33 @@
 					{/if}
 
 					<div class="player-shell">
-						<button
-							class:playing={isPlaying}
-							aria-label={isPlaying ? 'Pause stream' : 'Play stream'}
-							class="player-button"
-							type="button"
-							onclick={togglePlayback}
-						>
-							{#if isBuffering}
-								<span class="spinner"></span>
-							{:else if isPlaying}
-								<span class="pause-icon"></span>
-							{:else}
-								<span class="play-icon"></span>
-							{/if}
-						</button>
+						<div class="player-controls">
+							<button
+								class:playing={isPlaying}
+								aria-label={isPlaying ? 'Pause stream' : 'Play stream'}
+								class="player-button"
+								type="button"
+								onclick={togglePlayback}
+							>
+								{#if isBuffering}
+									<span class="spinner"></span>
+								{:else if isPlaying}
+									<span class="pause-icon"></span>
+								{:else}
+									<span class="play-icon"></span>
+								{/if}
+							</button>
+							<button
+								class="player-expand"
+								type="button"
+								aria-label={playerExpanded ? 'Collapse player' : 'Expand player'}
+								onclick={() => (playerExpanded = !playerExpanded)}
+							>
+								{playerExpanded ? '▾' : '▸'}
+							</button>
+						</div>
 
-						<div class="player-main">
+						<div class="player-main" class:expanded={playerExpanded}>
 							<div class="player-topline">
 								<div class="status-row">
 									<span class="live-pill">Live Radio</span>
@@ -750,6 +761,23 @@
 		background: transparent;
 	}
 
+	.player-controls {
+		display: flex;
+		gap: 0.3rem;
+		align-items: center;
+	}
+
+	.player-expand {
+		border: 0;
+		background: rgba(0, 0, 0, 0.54);
+		color: var(--ink);
+		font-size: 0.75rem;
+		line-height: 1;
+		cursor: pointer;
+		padding: 0.3rem 0.35rem;
+		display: none;
+	}
+
 	.player-button,
 	.icon-button {
 		border: 0;
@@ -1030,28 +1058,123 @@
 
 		.hud-top {
 			top: 0.75rem;
+			max-width: calc(100vw - 6rem);
 		}
 
 		.hud-bottom {
 			bottom: 0.75rem;
+			max-width: calc(100vw - 1.5rem);
 		}
 
 		.filter-row {
 			grid-template-columns: 1fr;
+			gap: 0.2rem;
+		}
+
+		.metric-row {
+			display: none;
 		}
 
 		.meta-row {
+			display: none;
+		}
+
+		.hud-fav-panel {
+			top: 0.75rem;
+			right: 0.75rem;
+			left: auto;
+		}
+
+		.spotlight-meta {
+			padding: 0.4rem 0.75rem;
+			display: flex;
+			align-items: center;
+			gap: 0.5rem;
+		}
+
+		.station-title {
+			gap: 0.3rem;
+			margin: 0;
+			flex: 1;
+			min-width: 0;
+		}
+
+		.station-title > div {
+			display: flex;
 			flex-direction: column;
-			align-items: flex-start;
+			gap: 0;
+			min-width: 0;
+		}
+
+		.station-name {
+			font-size: 0.75rem;
+			margin: 0;
+			line-height: 1;
+		}
+
+		.station-subtitle {
+			font-size: 0.6rem;
+			margin: 0;
+			line-height: 1;
+		}
+
+		.coordinates {
+			display: none;
+		}
+
+		.tag-list {
+			display: none;
 		}
 
 		.player-shell {
-			grid-template-columns: 1fr;
+			display: flex;
+			align-items: center;
+			gap: 0.3rem;
+			margin: 0;
+			padding: 0;
+			grid-template-columns: unset;
+		}
+
+		.player-controls {
+			display: flex;
+			gap: 0.15rem;
 		}
 
 		.player-button {
-			width: 2.7rem;
-			height: 2.7rem;
+			width: 1.8rem;
+			height: 1.8rem;
+		}
+
+		.player-expand {
+			display: block;
+			padding: 0.2rem 0.25rem;
+			font-size: 0.65rem;
+		}
+
+		.player-main {
+			display: none;
+		}
+
+		.player-main.expanded {
+			display: grid;
+		}
+
+		.station-icon {
+			width: 1.6rem;
+			height: 1.6rem;
+		}
+
+		.station-icon-fallback {
+			width: 1.6rem;
+			height: 1.6rem;
+			font-size: 0.7rem;
+		}
+
+		.fav-button {
+			min-width: 1.3rem;
+			min-height: 1.3rem;
+			font-size: 0.95rem;
+			padding: 0.15rem;
 		}
 	}
 
@@ -1074,7 +1197,7 @@
 	}
 
 	.hud-fav-panel {
-		top: 0.6rem;
+		top: 0.75rem;
 		right: 1rem;
 		left: auto;
 		max-width: 16rem;
