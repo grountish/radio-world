@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import type { RadioStation, RadioStationPayload } from '$lib/types/radio';
+	import { buildRadioUrl, parseRadioUrlState } from '$lib/utils/radio-url';
 
 	let stations = $state<RadioStation[]>([]);
 	let stats = $state<RadioStationPayload['stats'] | null>(null);
@@ -30,6 +31,10 @@
 	let favoriteFocusRequestId = $state(0);
 	let isCompactViewport = $state(false);
 	let instructionsOpen = $state(true);
+	let urlStateReady = $state(false);
+	let pendingUrlStationId = $state('');
+	let urlStateRevision = $state(0);
+	let urlSyncLocked = $state(true);
 	const hasActiveFilters = $derived(query.trim().length > 0 || country !== 'all' || hiQualityOnly);
 	const focusKey = $derived(
 		`${query.trim().toLowerCase()}|${country}|${hiQualityOnly ? '1' : '0'}`
@@ -47,6 +52,57 @@
 		return `${diffHours}h ago`;
 	});
 
+	function focusStation(station: RadioStation | null) {
+		if (!station) {
+			return;
+		}
+
+		favoriteFocusRequestId += 1;
+	}
+
+	function setSelectedStation(station: RadioStation | null, options?: { focus?: boolean }) {
+		const nextId = station?.id ?? '';
+		const previousId = untrack(() => selectedStation?.id ?? '');
+		selectedStation = station;
+
+		if (options?.focus && nextId && nextId !== previousId) {
+			focusStation(station);
+		}
+	}
+
+	function applyUrlState() {
+		if (typeof window === 'undefined') {
+			return;
+		}
+
+		const urlState = parseRadioUrlState(new URL(window.location.href));
+		urlSyncLocked = true;
+		query = urlState.query;
+		country = urlState.country;
+		hiQualityOnly = urlState.hiQualityOnly;
+		pendingUrlStationId = urlState.stationId;
+		urlStateRevision += 1;
+	}
+
+	function syncUrlState() {
+		if (!urlStateReady || typeof window === 'undefined') {
+			return;
+		}
+
+		const nextUrl = buildRadioUrl(new URL(window.location.href), {
+			query,
+			country,
+			hiQualityOnly,
+			stationId: selectedStation?.id ?? ''
+		});
+		const nextPath = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
+		const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+		if (nextPath !== currentPath) {
+			window.history.replaceState(window.history.state, '', nextPath);
+		}
+	}
+
 	onMount(async () => {
 		const updateViewportState = () => {
 			const compact = window.innerWidth < 672;
@@ -55,8 +111,12 @@
 				instructionsOpen = compact ? false : true;
 			}
 		};
+		const handlePopState = () => {
+			applyUrlState();
+		};
 
 		updateViewportState();
+		applyUrlState();
 		globeModule = import('$lib/components/RadioGlobe.svelte');
 
 		const saved = localStorage.getItem('radio-world-favorites');
@@ -91,11 +151,15 @@
 			window.addEventListener('online', () => (isOnline = true));
 			window.addEventListener('offline', () => (isOnline = false));
 			window.addEventListener('resize', updateViewportState);
+			window.addEventListener('popstate', handlePopState);
 		}
+
+		urlStateReady = true;
 
 		return () => {
 			if (typeof window !== 'undefined') {
 				window.removeEventListener('resize', updateViewportState);
+				window.removeEventListener('popstate', handlePopState);
 			}
 		};
 	});
@@ -153,12 +217,11 @@
 	const playingStation = $derived(isPlaying ? selectedStation : null);
 
 	function pickStation(station: RadioStation | null) {
-		selectedStation = station;
+		setSelectedStation(station, { focus: true });
 	}
 
 	function pickFavoriteStation(station: RadioStation) {
-		selectedStation = station;
-		favoriteFocusRequestId += 1;
+		setSelectedStation(station, { focus: true });
 	}
 
 	function toggleFavorite(id: string) {
@@ -327,6 +390,54 @@
 
 	$effect(() => {
 		localStorage.setItem('radio-world-favorites', JSON.stringify([...favoriteIds]));
+	});
+
+	$effect(() => {
+		urlStateRevision;
+
+		if (!urlStateReady) {
+			return;
+		}
+
+		if (!pendingUrlStationId) {
+			setSelectedStation(null);
+			urlSyncLocked = false;
+		}
+	});
+
+	$effect(() => {
+		stations;
+		isLoading;
+		pendingUrlStationId;
+
+		if (!urlStateReady || !pendingUrlStationId) {
+			return;
+		}
+
+		const station = stations.find((candidate) => candidate.id === pendingUrlStationId) ?? null;
+		if (station) {
+			setSelectedStation(station, { focus: true });
+			urlSyncLocked = false;
+			return;
+		}
+
+		if (!isLoading) {
+			urlSyncLocked = false;
+		}
+	});
+
+	$effect(() => {
+		query;
+		country;
+		hiQualityOnly;
+		selectedStation?.id;
+		urlSyncLocked;
+
+		if (urlSyncLocked) {
+			return;
+		}
+
+		syncUrlState();
 	});
 </script>
 
