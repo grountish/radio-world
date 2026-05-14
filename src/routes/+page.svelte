@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
+	import ScrambleText from '$lib/components/ScrambleText.svelte';
 	import type { RadioStation, RadioStationPayload } from '$lib/types/radio';
 	import { buildRadioUrl, parseRadioUrlState } from '$lib/utils/radio-url';
 
@@ -557,13 +558,12 @@
 				<div class="spotlight-meta">
 					<div class="station-title">
 						<div>
-							<p class="station-name">{spotlight.name}</p>
-							<p class="station-subtitle">
-								{spotlight.country} • {spotlight.language} • {spotlight.codec}
-								{#if spotlight.bitrate}
-									• {spotlight.bitrate} kbps
-								{/if}
-							</p>
+							<ScrambleText as="p" className="station-name" text={spotlight.name} />
+							<ScrambleText
+								as="p"
+								className="station-subtitle"
+								text={`${spotlight.country} • ${spotlight.language} • ${spotlight.codec}${spotlight.bitrate ? ` • ${spotlight.bitrate} kbps` : ''}`}
+							/>
 						</div>
 						<button
 							type="button"
@@ -589,9 +589,11 @@
 						{/if}
 					</div>
 
-					<p class="coordinates">
-						Lat {spotlight.lat.toFixed(2)} / Lon {spotlight.lon.toFixed(2)}
-					</p>
+					<ScrambleText
+						as="p"
+						className="coordinates"
+						text={`Lat ${spotlight.lat.toFixed(2)} / Lon ${spotlight.lon.toFixed(2)}`}
+					/>
 
 					{#if spotlight.tags.length > 0}
 						<div class="tag-list">
@@ -682,7 +684,7 @@
 					></audio>
 
 					<div class="meta-row">
-						<span>{refreshedAt || '...'}</span>
+						<ScrambleText as="span" text={refreshedAt || '...'} />
 						<div class="link-row">
 							{#if spotlight.homepage}
 								<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
