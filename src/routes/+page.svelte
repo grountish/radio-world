@@ -111,6 +111,7 @@
 			if (compact !== isCompactViewport) {
 				isCompactViewport = compact;
 				instructionsOpen = compact ? false : true;
+				playerExpanded = compact ? false : true;
 			}
 		};
 		const handlePopState = () => {
@@ -203,6 +204,13 @@
 	});
 
 	const spotlight = $derived(selectedStation);
+	const spotlightSubtitle = $derived.by(() => {
+		if (!selectedStation) {
+			return '';
+		}
+
+		return `${selectedStation.country} • ${selectedStation.language} • ${selectedStation.codec}${selectedStation.bitrate ? ` • ${selectedStation.bitrate} kbps` : ''}`;
+	});
 
 	const refreshedAt = $derived.by(() => {
 		if (!stats) {
@@ -554,127 +562,192 @@
 		</div>
 
 		<div class="hud hud-bottom">
-			{#if spotlight}
-				<div class="spotlight-meta">
-					<div class="station-title">
-						<div>
-							<ScrambleText as="p" className="station-name" text={spotlight.name} />
+				{#if spotlight}
+					<div class="spotlight-meta">
+						{#if isCompactViewport}
+						<div class="compact-station-row">
+							<div class="player-controls compact-player-controls">
+								<button
+									class:playing={isPlaying}
+									aria-label={isPlaying ? 'Pause stream' : 'Play stream'}
+									class="player-button"
+									type="button"
+									onclick={togglePlayback}
+								>
+									{#if isBuffering}
+										<span class="spinner"></span>
+									{:else if isPlaying}
+										<span class="pause-icon"></span>
+									{:else}
+										<span class="play-icon"></span>
+									{/if}
+								</button>
+								<button
+									class="player-expand"
+									type="button"
+									aria-label={playerExpanded ? 'Collapse player' : 'Expand player'}
+									onclick={() => (playerExpanded = !playerExpanded)}
+								>
+									{playerExpanded ? '▾' : '▸'}
+								</button>
+							</div>
+
 							<ScrambleText
 								as="p"
-								className="station-subtitle"
-								text={`${spotlight.country} • ${spotlight.language} • ${spotlight.codec}${spotlight.bitrate ? ` • ${spotlight.bitrate} kbps` : ''}`}
+								className="station-name compact-station-name"
+								text={spotlight.name}
 							/>
-						</div>
-						<button
-							type="button"
-							class="fav-button"
-							class:is-faved={favoriteIds.has(spotlight.id)}
-							onclick={() => toggleFavorite(spotlight.id)}
-							aria-label={favoriteIds.has(spotlight.id)
-								? 'Remove from favorites'
-								: 'Add to favorites'}
-						>
-							{favoriteIds.has(spotlight.id) ? '♥' : '♡'}
-						</button>
-						{#if spotlight.favicon && !failedFavicons.has(spotlight.id)}
-							<img
-								alt=""
-								class="station-icon"
-								src={spotlight.favicon}
-								loading="lazy"
-								onerror={() => failedFavicons.add(spotlight.id)}
-							/>
-						{:else if spotlight.favicon}
-							<div class="station-icon-fallback" title={spotlight.name}>▶︎</div>
-						{/if}
-					</div>
 
-					<ScrambleText
-						as="p"
-						className="coordinates"
-						text={`Lat ${spotlight.lat.toFixed(2)} / Lon ${spotlight.lon.toFixed(2)}`}
-					/>
-
-					{#if spotlight.tags.length > 0}
-						<div class="tag-list">
-							{#each spotlight.tags.slice(0, 5) as tag (tag)}
-								<span>{tag}</span>
-							{/each}
-						</div>
-					{/if}
-
-					<div class="player-shell">
-						<div class="player-controls">
 							<button
-								class:playing={isPlaying}
-								aria-label={isPlaying ? 'Pause stream' : 'Play stream'}
-								class="player-button"
 								type="button"
-								onclick={togglePlayback}
+								class="fav-button compact-fav-button"
+								class:is-faved={favoriteIds.has(spotlight.id)}
+								onclick={() => toggleFavorite(spotlight.id)}
+								aria-label={favoriteIds.has(spotlight.id)
+									? 'Remove from favorites'
+									: 'Add to favorites'}
 							>
-								{#if isBuffering}
-									<span class="spinner"></span>
-								{:else if isPlaying}
-									<span class="pause-icon"></span>
-								{:else}
-									<span class="play-icon"></span>
-								{/if}
-							</button>
-							<button
-								class="player-expand"
-								type="button"
-								aria-label={playerExpanded ? 'Collapse player' : 'Expand player'}
-								onclick={() => (playerExpanded = !playerExpanded)}
-							>
-								{playerExpanded ? '▾' : '▸'}
+								{favoriteIds.has(spotlight.id) ? '♥' : '♡'}
 							</button>
 						</div>
 
-						<div class="player-main" class:expanded={playerExpanded}>
-							<div class="player-topline">
-								<div class="status-row">
-									<span class="live-pill">Live Radio</span>
-									<span>{formatTime(elapsed)}</span>
+							<ScrambleText
+								as="p"
+								className="station-subtitle compact-station-subtitle"
+								text={spotlightSubtitle}
+							/>
+
+						{#if playerExpanded}
+							<div class="player-main compact-player-panel">
+								<div class="player-topline">
+									<div class="status-row">
+										<span class="live-pill">Live Radio</span>
+										<span>{formatTime(elapsed)}</span>
+									</div>
 								</div>
+
+								<div class="progress-rail" aria-hidden="true">
+									<div
+										class="progress-fill"
+										class:buffering={playbackStatus === 'buffering'}
+										class:ready={playbackStatus === 'ready'}
+										class:error={playbackStatus === 'error'}
+									></div>
+								</div>
+
+								<div class="volume-row">
+									<input
+										aria-label="Volume"
+										bind:value={volume}
+										class="volume-slider"
+										max="1"
+										min="0"
+										oninput={(event) =>
+											updateVolume(Number((event.currentTarget as HTMLInputElement).value))}
+										step="0.01"
+										type="range"
+									/>
+									<span>{Math.round(volume * 100)}%</span>
+								</div>
+							</div>
+						{/if}
+					{:else}
+						<div class="station-title">
+							<div>
+								<ScrambleText as="p" className="station-name" text={spotlight.name} />
+								<ScrambleText as="p" className="station-subtitle" text={spotlightSubtitle} />
+							</div>
+							<button
+								type="button"
+								class="fav-button"
+								class:is-faved={favoriteIds.has(spotlight.id)}
+								onclick={() => toggleFavorite(spotlight.id)}
+								aria-label={favoriteIds.has(spotlight.id)
+									? 'Remove from favorites'
+									: 'Add to favorites'}
+							>
+								{favoriteIds.has(spotlight.id) ? '♥' : '♡'}
+							</button>
+							{#if spotlight.favicon && !failedFavicons.has(spotlight.id)}
+								<img
+									alt=""
+									class="station-icon"
+									src={spotlight.favicon}
+									loading="lazy"
+									onerror={() => failedFavicons.add(spotlight.id)}
+								/>
+							{:else if spotlight.favicon}
+								<div class="station-icon-fallback" title={spotlight.name}>▶︎</div>
+							{/if}
+						</div>
+
+						<ScrambleText
+							as="p"
+							className="coordinates"
+							text={`Lat ${spotlight.lat.toFixed(2)} / Lon ${spotlight.lon.toFixed(2)}`}
+						/>
+
+						{#if spotlight.tags.length > 0}
+							<div class="tag-list">
+								{#each spotlight.tags.slice(0, 5) as tag (tag)}
+									<span>{tag}</span>
+								{/each}
+							</div>
+						{/if}
+
+						<div class="player-shell">
+							<div class="player-controls">
 								<button
-									aria-label={isMuted || volume === 0 ? 'Unmute stream' : 'Mute stream'}
-									class="icon-button"
+									class:playing={isPlaying}
+									aria-label={isPlaying ? 'Pause stream' : 'Play stream'}
+									class="player-button"
 									type="button"
-									onclick={toggleMute}
+									onclick={togglePlayback}
 								>
-									{#if isMuted || volume === 0}
-										<span class="volume-off"></span>
+									{#if isBuffering}
+										<span class="spinner"></span>
+									{:else if isPlaying}
+										<span class="pause-icon"></span>
 									{:else}
-										<span class="volume-on"></span>
+										<span class="play-icon"></span>
 									{/if}
 								</button>
 							</div>
 
-							<div class="progress-rail" aria-hidden="true">
-								<div
-									class="progress-fill"
-									class:buffering={playbackStatus === 'buffering'}
-									class:ready={playbackStatus === 'ready'}
-									class:error={playbackStatus === 'error'}
-								></div>
-							</div>
+							<div class="player-main">
+								<div class="player-topline">
+									<div class="status-row">
+										<span class="live-pill">Live Radio</span>
+										<span>{formatTime(elapsed)}</span>
+									</div>
+								</div>
 
-							<div class="volume-row">
-								<input
-									aria-label="Volume"
-									bind:value={volume}
-									class="volume-slider"
-									max="1"
-									min="0"
-									oninput={(event) =>
-										updateVolume(Number((event.currentTarget as HTMLInputElement).value))}
-									step="0.01"
-									type="range"
-								/>
-								<span>{Math.round(volume * 100)}%</span>
+								<div class="progress-rail" aria-hidden="true">
+									<div
+										class="progress-fill"
+										class:buffering={playbackStatus === 'buffering'}
+										class:ready={playbackStatus === 'ready'}
+										class:error={playbackStatus === 'error'}
+									></div>
+								</div>
+
+								<div class="volume-row">
+									<input
+										aria-label="Volume"
+										bind:value={volume}
+										class="volume-slider"
+										max="1"
+										min="0"
+										oninput={(event) =>
+											updateVolume(Number((event.currentTarget as HTMLInputElement).value))}
+										step="0.01"
+										type="range"
+									/>
+									<span>{Math.round(volume * 100)}%</span>
+								</div>
 							</div>
 						</div>
-					</div>
+					{/if}
 
 					<audio
 						bind:this={audioElement}
@@ -939,6 +1012,15 @@
 		color: var(--orange);
 		font-size: 0.72rem;
 		text-transform: lowercase;
+	}
+
+	.compact-station-row,
+	.compact-station-name,
+	.compact-station-subtitle,
+	.compact-player-panel,
+	.compact-player-controls,
+	.compact-fav-button {
+		display: none;
 	}
 
 	.player-shell {
@@ -1349,46 +1431,7 @@
 			display: flex;
 			flex-direction: column;
 			align-items: stretch;
-			gap: 0.5rem;
-		}
-
-		.station-title {
-			gap: 0.3rem;
-			margin: 0;
-			flex: 1;
-			min-width: 0;
-			order: 4;
-		}
-
-		.coordinates {
-			order: 3;
-		}
-
-		.tag-list {
-			order: 2;
-		}
-
-		.player-shell {
-			order: 1;
-		}
-
-		.station-title > div {
-			display: flex;
-			flex-direction: column;
-			gap: 0;
-			min-width: 0;
-		}
-
-		.station-name {
-			font-size: 0.75rem;
-			margin: 0;
-			line-height: 1;
-		}
-
-		.station-subtitle {
-			font-size: 0.6rem;
-			margin: 0;
-			line-height: 1;
+			gap: 0.35rem;
 		}
 
 		.coordinates {
@@ -1399,23 +1442,42 @@
 			display: none;
 		}
 
+		.station-title,
 		.player-shell {
-			display: flex;
+			display: none;
+		}
+
+		.compact-station-row {
+			display: grid;
+			grid-template-columns: auto minmax(0, 1fr) auto;
 			align-items: center;
-			gap: 0.3rem;
-			margin: 0;
-			padding: 0;
-			grid-template-columns: unset;
+			gap: 0.45rem;
+			min-width: 0;
 		}
 
-		.player-controls {
+		.compact-player-controls {
 			display: flex;
 			gap: 0.15rem;
+			align-items: center;
 		}
 
-		.player-button {
-			width: 1.8rem;
-			height: 1.8rem;
+		.compact-station-name {
+			display: block;
+			min-width: 0;
+			margin: 0;
+			font-size: 0.78rem;
+			line-height: 1;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.compact-station-subtitle {
+			display: block;
+			margin: 0;
+			font-size: 0.62rem;
+			line-height: 1.2;
+			color: var(--text-soft);
 		}
 
 		.player-expand {
@@ -1424,26 +1486,20 @@
 			font-size: 0.65rem;
 		}
 
-		.player-main {
-			display: none;
-		}
-
-		.player-main.expanded {
+		.compact-player-panel {
 			display: grid;
+			gap: 0.4rem;
+			margin: 0.1rem 0 0;
 		}
 
-		.station-icon {
-			width: 1.6rem;
-			height: 1.6rem;
+		.player-button {
+			width: 1.8rem;
+			height: 1.8rem;
 		}
 
-		.station-icon-fallback {
-			width: 1.6rem;
-			height: 1.6rem;
-			font-size: 0.7rem;
-		}
-
-		.fav-button {
+		.compact-fav-button {
+			display: grid;
+			place-items: center;
 			min-width: 1.3rem;
 			min-height: 1.3rem;
 			font-size: 0.95rem;

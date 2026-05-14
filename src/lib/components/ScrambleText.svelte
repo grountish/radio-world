@@ -8,15 +8,11 @@
 		animateInitial?: boolean;
 	};
 
-	let {
-		text = '',
-		as = 'span',
-		className = '',
-		animateInitial = false
-	}: Props = $props();
+	let { text = '', as = 'span', className = '', animateInitial = false }: Props = $props();
 
 	const glyphs = 'a*c_e1f·ij#l¢n$pq%s&u/w()=0^23456789:/-•.,';
 	const extraFrames = 10;
+	const frameDurationMs = 11;
 	let displayText = $state(text);
 	let initialized = false;
 	let reduceMotion = false;
@@ -52,19 +48,27 @@
 			const to = nextText[index] ?? '';
 			const locked = isLockedCharacter(from) && isLockedCharacter(to);
 
-				return {
-					from,
-					to,
-					locked,
-					start: locked ? 0 : Math.floor(Math.random() * 5),
-					end: locked ? 0 : 7 + Math.floor(Math.random() * 9) + index * 0.35 + extraFrames,
-					glyph: from
-				};
-			});
+			return {
+				from,
+				to,
+				locked,
+				start: locked ? 0 : Math.floor(Math.random() * 5),
+				end: locked ? 0 : 7 + Math.floor(Math.random() * 9) + index * 0.35 + extraFrames,
+				glyph: from
+			};
+		});
 
 		let frame = 0;
+		let lastFrameTime = 0;
 
 		const render = () => {
+			const now = performance.now();
+			if (lastFrameTime !== 0 && now - lastFrameTime < frameDurationMs) {
+				frameId = requestAnimationFrame(render);
+				return;
+			}
+
+			lastFrameTime = now;
 			let completed = 0;
 			let output = '';
 
