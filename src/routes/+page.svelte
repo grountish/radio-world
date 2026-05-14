@@ -611,11 +611,11 @@
 							</button>
 						</div>
 
-							<ScrambleText
+							<!-- <ScrambleText
 								as="p"
 								className="station-subtitle compact-station-subtitle"
 								text={spotlightSubtitle}
-							/>
+							/> -->
 
 						{#if playerExpanded}
 							<div class="player-main compact-player-panel">

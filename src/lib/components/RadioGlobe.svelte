@@ -246,7 +246,7 @@
 		context.fill();
 		context.globalAlpha = 1;
 
-		context.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+		context.strokeStyle = 'rgba(255, 255, 255, 0.22)';
 		context.lineWidth = 1.5;
 		context.beginPath();
 		path(coastlines);
@@ -258,7 +258,7 @@
 		path(countryBorders);
 		context.stroke();
 
-		context.strokeStyle = 'rgba(255, 255, 255, 0.025)';
+		context.strokeStyle = 'rgba(255, 255, 255, 0.22)';
 		context.lineWidth = 1.1;
 		for (let longitude = 0; longitude <= canvas.width; longitude += canvas.width / 18) {
 			context.beginPath();
@@ -293,7 +293,7 @@
 		const coastMaterial = new THREE.LineBasicMaterial({
 			color: '#7a7367',
 			transparent: true,
-			opacity: 0.25,
+			opacity: 0.5,
 			linewidth: 1.5
 		});
 
@@ -1385,7 +1385,7 @@
 			left: 0.75rem;
 			right: 0.75rem;
 			top: auto;
-			bottom: calc(env(safe-area-inset-bottom, 0px) + 6.25rem);
+			bottom: calc(env(safe-area-inset-bottom, 0px) + 5rem);
 			transform: none;
 			width: auto;
 			max-height: min(32dvh, 14rem);
