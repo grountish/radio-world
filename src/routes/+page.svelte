@@ -21,6 +21,22 @@
 	let lastAutoplayStationId = '';
 	let favoriteIds = $state<Set<string>>(new Set());
 	let favoritesOpen = $state(false);
+	let apiResponseTime = $state(0);
+	let isOnline = $state(true);
+	let rawApiStats = $state<any>(null);
+	let failedFavicons = $state<Set<string>>(new Set());
+
+	const dataAge = $derived.by(() => {
+		if (!stats?.updatedAt) return '';
+		const updated = new Date(stats.updatedAt);
+		const now = new Date();
+		const diffMs = now.getTime() - updated.getTime();
+		const diffMins = Math.floor(diffMs / 60000);
+		if (diffMins < 1) return 'now';
+		if (diffMins < 60) return `${diffMins}m ago`;
+		const diffHours = Math.floor(diffMins / 60);
+		return `${diffHours}h ago`;
+	});
 
 	onMount(async () => {
 		globeModule = import('$lib/components/RadioGlobe.svelte');
@@ -35,7 +51,9 @@
 		}
 
 		try {
+			const startTime = performance.now();
 			const response = await fetch('/api/stations');
+			apiResponseTime = Math.round(performance.now() - startTime);
 			if (!response.ok) {
 				throw new Error('The live radio directory could not be reached.');
 			}
@@ -43,11 +61,17 @@
 			const payload = (await response.json()) as RadioStationPayload;
 			stations = payload.stations;
 			stats = payload.stats;
+			rawApiStats = payload.stats;
 		} catch (cause) {
 			error =
 				cause instanceof Error ? cause.message : 'The live radio directory could not be reached.';
 		} finally {
 			isLoading = false;
+		}
+
+		if (typeof window !== 'undefined') {
+			window.addEventListener('online', () => (isOnline = true));
+			window.addEventListener('offline', () => (isOnline = false));
 		}
 	});
 
@@ -283,7 +307,18 @@
 		{:else if globeModule}
 			{#await globeModule then module}
 				{@const Globe = module.default}
-				<Globe stations={visibleStations} {selectedStation} onselect={pickStation} />
+				<Globe
+					stations={visibleStations}
+					{selectedStation}
+					onselect={pickStation}
+					{apiResponseTime}
+					{dataAge}
+					apiError={error}
+					{query}
+					{country}
+					{isOnline}
+					{rawApiStats}
+				/>
 			{:catch}
 				<div class="loading-card error-card">
 					<p>The 3D globe component could not be loaded.</p>
@@ -350,8 +385,18 @@
 						>
 							{favoriteIds.has(spotlight.id) ? '♥' : '♡'}
 						</button>
-						{#if spotlight.favicon}
-							<img alt="" class="station-icon" src={spotlight.favicon} loading="lazy" />
+						{#if spotlight.favicon && !failedFavicons.has(spotlight.id)}
+							<img
+								alt=""
+								class="station-icon"
+								src={spotlight.favicon}
+								loading="lazy"
+								onerror={() => failedFavicons.add(spotlight.id)}
+							/>
+						{:else if spotlight.favicon}
+							<div class="station-icon-fallback" title={spotlight.name}>
+								{spotlight.name.charAt(0).toUpperCase()}
+							</div>
 						{/if}
 					</div>
 
@@ -626,6 +671,22 @@
 		object-fit: cover;
 		background: rgba(255, 255, 255, 0.1);
 		filter: grayscale(1) contrast(1.05);
+	}
+
+	.station-icon-fallback {
+		width: 2.2rem;
+		height: 2.2rem;
+		border-radius: 0;
+		background: linear-gradient(135deg, rgba(241, 140, 52, 0.2), rgba(241, 140, 52, 0.1));
+		border: 1px solid rgba(241, 140, 52, 0.3);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 1.1rem;
+		font-weight: 600;
+		color: rgba(241, 140, 52, 0.8);
+		text-transform: uppercase;
+		flex-shrink: 0;
 	}
 
 	.tag-list {

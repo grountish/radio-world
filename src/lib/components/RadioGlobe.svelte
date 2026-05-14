@@ -13,13 +13,27 @@
 		selectedStation?: RadioStation | null;
 		onselect?: (station: RadioStation | null) => void;
 		onhover?: (station: RadioStation | null) => void;
+		apiResponseTime?: number;
+		dataAge?: string;
+		apiError?: string;
+		query?: string;
+		country?: string;
+		isOnline?: boolean;
+		rawApiStats?: any;
 	};
 
 	let {
 		stations = [],
 		selectedStation = null,
 		onselect = undefined,
-		onhover = undefined
+		onhover = undefined,
+		apiResponseTime = 0,
+		dataAge = '',
+		apiError = '',
+		query = '',
+		country = 'all',
+		isOnline = true,
+		rawApiStats = null
 	}: Props = $props();
 
 	let container: HTMLDivElement;
@@ -668,10 +682,15 @@
 
 		<div class="debug-panel" class:open={debugOpen}>
 			<button class="debug-toggle" type="button" onclick={() => (debugOpen = !debugOpen)}>
-				{debugOpen ? '▾' : '▸'} {debugStats.fps} fps
+				{debugOpen ? '▾' : '▸'} debug
 			</button>
 			{#if debugOpen}
 				<div class="debug-info">
+					<div class="debug-section">performance</div>
+					<div class="debug-row">
+						<span class="debug-label">fps:</span>
+						<span class="debug-value">{debugStats.fps}</span>
+					</div>
 					<div class="debug-row">
 						<span class="debug-label">stations:</span>
 						<span class="debug-value">{debugStats.visibleStations}</span>
@@ -679,6 +698,44 @@
 					<div class="debug-row">
 						<span class="debug-label">hovered:</span>
 						<span class="debug-value">{hoveredClusterStations.length}</span>
+					</div>
+
+					<div class="debug-section">api</div>
+					{#if apiError}
+						<div class="debug-row error">
+							<span class="debug-label">error:</span>
+							<span class="debug-value">{apiError}</span>
+						</div>
+					{/if}
+					<div class="debug-row">
+						<span class="debug-label">response time:</span>
+						<span class="debug-value">{apiResponseTime}ms</span>
+					</div>
+					<div class="debug-row">
+						<span class="debug-label">data age:</span>
+						<span class="debug-value">{dataAge || '—'}</span>
+					</div>
+					<div class="debug-row">
+						<span class="debug-label">network:</span>
+						<span class="debug-value">{isOnline ? 'online' : 'offline'}</span>
+					</div>
+
+					<div class="debug-section">state</div>
+					<div class="debug-row">
+						<span class="debug-label">query:</span>
+						<span class="debug-value">{query || '—'}</span>
+					</div>
+					<div class="debug-row">
+						<span class="debug-label">country:</span>
+						<span class="debug-value">{country}</span>
+					</div>
+					<div class="debug-row">
+						<span class="debug-label">station:</span>
+						<span class="debug-value">{selectedStation?.name || '—'}</span>
+					</div>
+					<div class="debug-row">
+						<span class="debug-label">sticky:</span>
+						<span class="debug-value">{isSticky ? 'yes' : 'no'}</span>
 					</div>
 				</div>
 			{/if}
@@ -889,6 +946,27 @@
 		font-weight: 500;
 		text-align: right;
 		min-width: 4rem;
+	}
+
+	.debug-section {
+		margin-top: 0.6rem;
+		margin-bottom: 0.3rem;
+		padding-top: 0.4rem;
+		border-top: 1px solid rgba(241, 140, 52, 0.2);
+		color: rgba(241, 140, 52, 0.8);
+		font-size: 0.55rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		font-weight: 600;
+	}
+
+	.debug-row.error {
+		color: #ff6b6b;
+	}
+
+	.debug-row.error .debug-label,
+	.debug-row.error .debug-value {
+		color: #ff6b6b;
 	}
 
 </style>
