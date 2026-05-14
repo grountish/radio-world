@@ -11,6 +11,7 @@
 	);
 	let query = $state('');
 	let country = $state('all');
+	let hiQualityOnly = $state(false);
 	let selectedStation = $state<RadioStation | null>(null);
 	let audioElement = $state<HTMLAudioElement | null>(null);
 	let isPlaying = $state(false);
@@ -89,6 +90,10 @@
 				return false;
 			}
 
+			if (hiQualityOnly && (!station.bitrate || station.bitrate < 192)) {
+				return false;
+			}
+
 			if (!normalizedQuery) {
 				return true;
 			}
@@ -139,6 +144,7 @@
 	function clearFilters() {
 		query = '';
 		country = 'all';
+		hiQualityOnly = false;
 	}
 
 	function formatTime(totalSeconds: number) {
@@ -330,8 +336,24 @@
 			<div class="filter-row">
 				<input bind:value={query} placeholder="Search station, country, language" />
 
-				{#if query || country !== 'all'}
-					<button class="ghost-button" type="button" onclick={clearFilters} aria-label="Clear filters">×</button>
+				<button
+					class="ghost-button filter-toggle"
+					class:active={hiQualityOnly}
+					type="button"
+					onclick={() => (hiQualityOnly = !hiQualityOnly)}
+					aria-label="Filter high quality stations (192+ kbps)"
+					title="192+ kbps"
+				>
+					<div class="filter-toggle-content"><span> HD</span> <span>♪</span></div>
+				</button>
+
+				{#if query || country !== 'all' || hiQualityOnly}
+					<button
+						class="ghost-button"
+						type="button"
+						onclick={clearFilters}
+						aria-label="Clear filters">×</button
+					>
 				{/if}
 			</div>
 
@@ -381,7 +403,9 @@
 							class="fav-button"
 							class:is-faved={favoriteIds.has(spotlight.id)}
 							onclick={() => toggleFavorite(spotlight.id)}
-							aria-label={favoriteIds.has(spotlight.id) ? 'Remove from favorites' : 'Add to favorites'}
+							aria-label={favoriteIds.has(spotlight.id)
+								? 'Remove from favorites'
+								: 'Add to favorites'}
 						>
 							{favoriteIds.has(spotlight.id) ? '♥' : '♡'}
 						</button>
@@ -394,9 +418,7 @@
 								onerror={() => failedFavicons.add(spotlight.id)}
 							/>
 						{:else if spotlight.favicon}
-							<div class="station-icon-fallback" title={spotlight.name}>
-								{spotlight.name.charAt(0).toUpperCase()}
-							</div>
+							<div class="station-icon-fallback" title={spotlight.name}>▶︎</div>
 						{/if}
 					</div>
 
@@ -496,12 +518,18 @@
 			{:else}
 				<div class="empty-copy">
 					<dl class="hint-grid">
-						<dt>drag</dt>       <dd>orbit the globe</dd>
-						<dt>scroll</dt>     <dd>zoom in / out</dd>
-						<dt>hover</dt>      <dd>preview stations at that location</dd>
-						<dt>click</dt>      <dd>select a station and start listening</dd>
-						<dt>right-click</dt><dd>pin the cluster list so you can browse it</dd>
-						<dt>pin + right-click</dt><dd>switch pinned cluster to another location</dd>
+						<dt>drag</dt>
+						<dd>orbit the globe</dd>
+						<dt>scroll</dt>
+						<dd>zoom in / out</dd>
+						<dt>hover</dt>
+						<dd>preview stations at that location</dd>
+						<dt>click</dt>
+						<dd>select a station and start listening</dd>
+						<dt>right-click</dt>
+						<dd>pin the cluster list so you can browse it</dd>
+						<dt>pin + right-click</dt>
+						<dd>switch pinned cluster to another location</dd>
 					</dl>
 				</div>
 			{/if}
@@ -628,12 +656,21 @@
 	.ghost-button {
 		border: 0;
 		border-radius: 0;
-		padding: 0.3rem 0.5rem;
 		background: rgba(0, 0, 0, 0.54);
 		color: var(--orange);
 		font-size: 1rem;
 		line-height: 1;
 		cursor: pointer;
+	}
+
+	.filter-toggle {
+		color: rgba(242, 230, 210, 0.5);
+		transition: all 0.1s;
+	}
+
+	.filter-toggle.active {
+		background: rgba(241, 140, 52, 0.15);
+		color: var(--orange);
 	}
 
 	.spotlight-meta {
@@ -682,11 +719,10 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 1.1rem;
-		font-weight: 600;
-		color: rgba(241, 140, 52, 0.8);
-		text-transform: uppercase;
 		flex-shrink: 0;
+		color: rgba(241, 140, 52, 0.8);
+		font-size: 0.9rem;
+		line-height: 1;
 	}
 
 	.tag-list {
@@ -835,6 +871,13 @@
 		height: 0.44rem;
 		border-radius: 0.08rem;
 		background: currentColor;
+	}
+	.filter-toggle-content {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		font-size: 0.82rem;
 	}
 
 	.volume-on::after,

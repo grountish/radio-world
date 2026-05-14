@@ -58,6 +58,7 @@
 	let markerMesh: THREE.InstancedMesh | null = null;
 	let markerHitMesh: THREE.InstancedMesh | null = null;
 	let hoveredIndex = -1;
+	let isHoveringStation = $state(false);
 	let visibleStations: RadioStation[] = [];
 	let clusterKeyByIndex: string[] = [];
 	let baseMarkerPositions: THREE.Vector3[] = [];
@@ -404,6 +405,7 @@
 
 		hoveredIndex = -1;
 		hoveredClusterStations = [];
+		isHoveringStation = false;
 		onhover?.(null);
 		updateMarkerColors();
 	}
@@ -436,6 +438,8 @@
 
 		const nextIndex = getIntersection(event);
 		const nextHoveredIndex = nextIndex ?? -1;
+
+		isHoveringStation = nextHoveredIndex >= 0;
 
 		if (nextHoveredIndex === hoveredIndex) {
 			return;
@@ -638,6 +642,7 @@
 	<div
 		bind:this={container}
 		class="globe-canvas"
+		class:hovering-station={isHoveringStation}
 		role="img"
 		aria-label="Interactive 3D globe showing the coordinates of radio stations around the world"
 	>
@@ -770,6 +775,10 @@
 		display: block;
 		width: 100%;
 		height: 100%;
+	}
+
+	.globe-canvas.hovering-station {
+		cursor: pointer;
 	}
 
 	.globe-canvas:active {
