@@ -364,10 +364,20 @@
 			return;
 		}
 
+		const isMobile = window.innerWidth < 672;
+
 		for (let index = 0; index < visibleStations.length; index += 1) {
 			const point = baseMarkerPositions[index];
-			const markerScale = 0.5 * currentZoomScale;
-			const hitScale = 1.1 * currentZoomScale;
+			let markerScale: number;
+			let hitScale: number;
+
+			if (isMobile) {
+				markerScale = 0.025 + 2.975 * currentZoomScale;
+				hitScale = 0.3 + 4.2 * currentZoomScale;
+			} else {
+				markerScale = 0.5 * currentZoomScale;
+				hitScale = 1.1 * currentZoomScale;
+			}
 
 			dummy.position.copy(point);
 			dummy.scale.setScalar(markerScale);
@@ -581,7 +591,7 @@
 			applyMarkerLayout();
 			updateMarkerColors();
 			if (controls) {
-				controls.rotateSpeed = 0.3 + 0.7 * t;
+				controls.rotateSpeed = 0.08 + 0.52 * (1 - t);
 			}
 		}
 
