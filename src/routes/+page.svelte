@@ -27,6 +27,13 @@
 	let isOnline = $state(true);
 	let rawApiStats = $state<any>(null);
 	let failedFavicons = $state<Set<string>>(new Set());
+	let favoriteFocusRequestId = $state(0);
+	let isCompactViewport = $state(false);
+	let instructionsOpen = $state(true);
+	const hasActiveFilters = $derived(query.trim().length > 0 || country !== 'all' || hiQualityOnly);
+	const focusKey = $derived(
+		`${query.trim().toLowerCase()}|${country}|${hiQualityOnly ? '1' : '0'}`
+	);
 
 	const dataAge = $derived.by(() => {
 		if (!stats?.updatedAt) return '';
@@ -41,6 +48,15 @@
 	});
 
 	onMount(async () => {
+		const updateViewportState = () => {
+			const compact = window.innerWidth < 672;
+			if (compact !== isCompactViewport) {
+				isCompactViewport = compact;
+				instructionsOpen = compact ? false : true;
+			}
+		};
+
+		updateViewportState();
 		globeModule = import('$lib/components/RadioGlobe.svelte');
 
 		const saved = localStorage.getItem('radio-world-favorites');
@@ -74,7 +90,14 @@
 		if (typeof window !== 'undefined') {
 			window.addEventListener('online', () => (isOnline = true));
 			window.addEventListener('offline', () => (isOnline = false));
+			window.addEventListener('resize', updateViewportState);
 		}
+
+		return () => {
+			if (typeof window !== 'undefined') {
+				window.removeEventListener('resize', updateViewportState);
+			}
+		};
 	});
 
 	const countryOptions = $derived.by(() => {
@@ -127,9 +150,15 @@
 	});
 
 	const favoriteStations = $derived(stations.filter((s) => favoriteIds.has(s.id)));
+	const playingStation = $derived(isPlaying ? selectedStation : null);
 
 	function pickStation(station: RadioStation | null) {
 		selectedStation = station;
+	}
+
+	function pickFavoriteStation(station: RadioStation) {
+		selectedStation = station;
+		favoriteFocusRequestId += 1;
 	}
 
 	function toggleFavorite(id: string) {
@@ -325,6 +354,11 @@
 					{country}
 					{isOnline}
 					{rawApiStats}
+					shouldAutoFocus={hasActiveFilters}
+					{focusKey}
+					favoriteFocusStation={selectedStation}
+					{favoriteFocusRequestId}
+					{playingStation}
 				/>
 			{:catch}
 				<div class="loading-card error-card">
@@ -376,7 +410,7 @@
 						<p class="fav-empty">no favorites yet</p>
 					{:else}
 						{#each favoriteStations as station (station.id)}
-							<button type="button" class="fav-item" onclick={() => pickStation(station)}>
+							<button type="button" class="fav-item" onclick={() => pickFavoriteStation(station)}>
 								<span class="fav-name">{station.name}</span>
 								{#if station.country}<span class="fav-country">{station.country}</span>{/if}
 							</button>
@@ -528,20 +562,37 @@
 				</div>
 			{:else}
 				<div class="empty-copy">
-					<dl class="hint-grid">
-						<dt>drag</dt>
-						<dd>orbit the globe</dd>
-						<dt>scroll</dt>
-						<dd>zoom in / out</dd>
-						<dt>hover</dt>
-						<dd>preview stations at that location</dd>
-						<dt>click</dt>
-						<dd>select a station and start listening</dd>
-						<dt>right-click</dt>
-						<dd>pin the cluster list so you can browse it</dd>
-						<dt>pin + right-click</dt>
-						<dd>switch pinned cluster to another location</dd>
-					</dl>
+					<div class="hint-panel" class:compact={isCompactViewport}>
+						<div class="hint-panel-header">
+							<p class="hint-panel-title">how to use</p>
+							{#if isCompactViewport}
+								<button
+									type="button"
+									class="hint-toggle"
+									aria-expanded={instructionsOpen}
+									onclick={() => (instructionsOpen = !instructionsOpen)}
+								>
+									{instructionsOpen ? 'hide' : 'show'}
+								</button>
+							{/if}
+						</div>
+						{#if !isCompactViewport || instructionsOpen}
+							<dl class="hint-grid">
+								<dt>drag</dt>
+								<dd>orbit the globe</dd>
+								<dt>scroll</dt>
+								<dd>zoom in / out</dd>
+								<dt>hover</dt>
+								<dd>preview stations at that location</dd>
+								<dt>click</dt>
+								<dd>select a station and start listening</dd>
+								<dt>right-click</dt>
+								<dd>pin the cluster list so you can browse it</dd>
+								<dt>pin + right-click</dt>
+								<dd>switch pinned cluster to another location</dd>
+							</dl>
+						{/if}
+					</div>
 				</div>
 			{/if}
 		</div>
@@ -1027,6 +1078,47 @@
 		padding: 0.75rem 1rem;
 	}
 
+	.hint-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.55rem;
+	}
+
+	.hint-panel.compact {
+		gap: 0.35rem;
+	}
+
+	.hint-panel-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+
+	.hint-panel-title {
+		margin: 0;
+		color: var(--text-soft);
+		font-size: 0.66rem;
+		letter-spacing: 0.08em;
+		text-transform: lowercase;
+	}
+
+	.hint-toggle {
+		border: 0;
+		padding: 0.1rem 0;
+		background: transparent;
+		color: var(--orange);
+		font-size: 0.66rem;
+		line-height: 1;
+		text-transform: lowercase;
+		cursor: pointer;
+		font-family: inherit;
+	}
+
+	.hint-toggle:hover {
+		color: var(--text);
+	}
+
 	.hint-grid {
 		display: grid;
 		grid-template-columns: auto 1fr;
@@ -1088,7 +1180,8 @@
 		.spotlight-meta {
 			padding: 0.4rem 0.75rem;
 			display: flex;
-			align-items: center;
+			flex-direction: column;
+			align-items: stretch;
 			gap: 0.5rem;
 		}
 
@@ -1097,6 +1190,19 @@
 			margin: 0;
 			flex: 1;
 			min-width: 0;
+			order: 4;
+		}
+
+		.coordinates {
+			order: 3;
+		}
+
+		.tag-list {
+			order: 2;
+		}
+
+		.player-shell {
+			order: 1;
 		}
 
 		.station-title > div {

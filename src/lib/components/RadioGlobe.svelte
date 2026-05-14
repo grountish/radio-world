@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { geoEquirectangular, geoPath } from 'd3-geo';
 	import * as THREE from 'three';
 	import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -7,6 +7,7 @@
 	import countriesAtlas from 'world-atlas/countries-10m.json';
 	import type { RadioStation } from '$lib/types/radio';
 	import { latLonToCartesian } from '$lib/utils/geo';
+	import { getStationFocusTarget } from '$lib/utils/station-focus';
 
 	type Props = {
 		stations?: RadioStation[];
@@ -20,6 +21,11 @@
 		country?: string;
 		isOnline?: boolean;
 		rawApiStats?: any;
+		shouldAutoFocus?: boolean;
+		focusKey?: string;
+		favoriteFocusStation?: RadioStation | null;
+		favoriteFocusRequestId?: number;
+		playingStation?: RadioStation | null;
 	};
 
 	let {
@@ -33,7 +39,12 @@
 		query = '',
 		country = 'all',
 		isOnline = true,
-		rawApiStats = null
+		rawApiStats = null,
+		shouldAutoFocus = false,
+		focusKey = '',
+		favoriteFocusStation = null,
+		favoriteFocusRequestId = 0,
+		playingStation = null
 	}: Props = $props();
 
 	let container: HTMLDivElement;
@@ -49,6 +60,13 @@
 	const raycaster = new THREE.Raycaster();
 	const dummy = new THREE.Object3D();
 	const clickMovementThreshold = 8;
+	const globeCenter = new THREE.Vector3(0, 0, 0);
+	const defaultCameraPosition = new THREE.Vector3(0, 0.2, 4.9);
+	const markerAltitude = 0.04;
+	const desktopFavoriteFocusDistance = 1.62;
+	const mobileFavoriteFocusDistance = 1.78;
+	const mobileClusterGridDegrees = 0.65;
+	const mobileTapClusterGridDegrees = 1.25;
 
 	let renderer: THREE.WebGLRenderer | null = null;
 	let scene: THREE.Scene | null = null;
@@ -61,11 +79,17 @@
 	let isHoveringStation = $state(false);
 	let visibleStations: RadioStation[] = [];
 	let clusterKeyByIndex: string[] = [];
+	let clusterSizeByIndex: number[] = [];
+	let stationIndexById = new Map<string, number>();
 	let baseMarkerPositions: THREE.Vector3[] = [];
 	let hoveredClusterStations = $state<RadioStation[]>([]);
 	let stickyClusterStations = $state<RadioStation[]>([]);
 	let isSticky = $state(false);
-	const displayedClusterStations = $derived(isSticky ? stickyClusterStations : hoveredClusterStations);
+	let stickyClusterKey = $state<string | null>(null);
+	let stickyStationIds = $state<string[] | null>(null);
+	const displayedClusterStations = $derived(
+		isSticky ? stickyClusterStations : hoveredClusterStations
+	);
 	let currentZoomScale = 1.0;
 	let lastZoomScale = -1;
 	let currentCamDist = 0;
@@ -78,8 +102,59 @@
 	let pointerDownY = 0;
 	let pointerIsActive = false;
 	let lastPointerUpTime = 0;
+	let suppressCanvasSelectionUntil = 0;
 	let animationFrame = 0;
 	let resizeObserver: ResizeObserver | null = null;
+	let sceneReady = $state(false);
+	let autoFocusPending = $state(false);
+	let focusCameraPosition = defaultCameraPosition.clone();
+	let playingPulseMesh: THREE.Mesh | null = null;
+	let playingPulsePosition: THREE.Vector3 | null = null;
+	let playingPulseMarkerScale = 0;
+
+	function createPlayingPulse() {
+		const geometry = new THREE.SphereGeometry(0.018, 24, 24);
+		const material = new THREE.MeshBasicMaterial({
+			color: '#ffd9a6',
+			transparent: true,
+			opacity: 0,
+			depthWrite: false,
+			blending: THREE.AdditiveBlending
+		});
+		const mesh = new THREE.Mesh(geometry, material);
+		mesh.visible = false;
+		mesh.renderOrder = 5;
+		return mesh;
+	}
+
+	function queueCameraFocus(position: THREE.Vector3) {
+		focusCameraPosition.copy(position);
+		autoFocusPending = true;
+	}
+
+	function buildFocusCameraPosition(lat: number, lon: number, distance?: number) {
+		const nextDistance =
+			distance ?? (camera ? camera.position.length() : defaultCameraPosition.length());
+		const point = latLonToCartesian(lat, lon, 1);
+		const direction = new THREE.Vector3(point.x, point.y, point.z);
+
+		if (earthGroup) {
+			direction.applyQuaternion(earthGroup.quaternion);
+		}
+
+		return direction.normalize().multiplyScalar(nextDistance);
+	}
+
+	function updateControlSensitivity() {
+		if (!controls) {
+			return;
+		}
+
+		const isMobile = window.innerWidth < 672;
+		controls.rotateSpeed = isMobile
+			? 0.07 + 0.33 * currentNormalizedZoom
+			: 0.04 + 0.34 * currentNormalizedZoom;
+	}
 
 	function createBackdrop() {
 		if (!scene) {
@@ -241,7 +316,9 @@
 					points.push(new THREE.Vector3(point.x, point.y, point.z));
 				}
 				if (points.length > 1) {
-					group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), countryMaterial));
+					group.add(
+						new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), countryMaterial)
+					);
 				}
 			}
 		}
@@ -257,7 +334,9 @@
 					points.push(new THREE.Vector3(point.x, point.y, point.z));
 				}
 				if (points.length > 1) {
-					group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), coastMaterial));
+					group.add(
+						new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), coastMaterial)
+					);
 				}
 			}
 		}
@@ -329,6 +408,8 @@
 			return;
 		}
 
+		const isMobile = clientWidth < 672;
+		renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2.5));
 		renderer.setSize(clientWidth, clientHeight, false);
 		camera.aspect = clientWidth / clientHeight;
 		camera.updateProjectionMatrix();
@@ -355,8 +436,127 @@
 		}
 	}
 
-	function toClusterKey(lat: number, lon: number) {
-		return `${Math.round(lat / clusterGridDegrees)}:${Math.round(lon / clusterGridDegrees)}`;
+	function getInteractionClusterGridDegrees() {
+		if (typeof window === 'undefined') {
+			return clusterGridDegrees;
+		}
+
+		return window.innerWidth < 672 ? mobileClusterGridDegrees : clusterGridDegrees;
+	}
+
+	function toClusterKey(
+		lat: number,
+		lon: number,
+		gridDegrees = getInteractionClusterGridDegrees()
+	) {
+		return `${Math.round(lat / gridDegrees)}:${Math.round(lon / gridDegrees)}`;
+	}
+
+	function getStationsForClusterKey(
+		clusterKey: string,
+		gridDegrees = getInteractionClusterGridDegrees()
+	) {
+		if (gridDegrees === getInteractionClusterGridDegrees()) {
+			return visibleStations.filter((_, index) => clusterKeyByIndex[index] === clusterKey);
+		}
+
+		return visibleStations.filter(
+			(station) => toClusterKey(station.lat, station.lon, gridDegrees) === clusterKey
+		);
+	}
+
+	function setStickyStations(stations: RadioStation[]) {
+		stickyClusterKey = null;
+		stickyStationIds = stations.map((station) => station.id);
+		stickyClusterStations = stations;
+		isSticky = stickyClusterStations.length > 0;
+	}
+
+	function setStickyCluster(clusterKey: string | null) {
+		stickyClusterKey = clusterKey;
+		stickyStationIds = null;
+
+		if (!clusterKey) {
+			stickyClusterStations = [];
+			isSticky = false;
+			return;
+		}
+
+		stickyClusterStations = getStationsForClusterKey(clusterKey);
+		isSticky = stickyClusterStations.length > 0;
+		if (!isSticky) {
+			stickyClusterKey = null;
+		}
+	}
+
+	function getClusterDensityScale(clusterSize: number, isMobile: boolean) {
+		if (clusterSize <= 1) {
+			return isMobile ? 1.42 : 1.8;
+		}
+
+		const baseScale = isMobile
+			? 1.42 / Math.pow(clusterSize, 0.24)
+			: 1.8 / Math.pow(clusterSize, 0.32);
+		const minScale = isMobile ? 0.76 : 0.82;
+		const maxScale = isMobile ? 1.42 : 1.8;
+		return Math.max(minScale, Math.min(maxScale, baseScale));
+	}
+
+	function getHitDensityScale(clusterSize: number, isMobile: boolean) {
+		if (!isMobile) {
+			return Math.max(1.15, getClusterDensityScale(clusterSize, false));
+		}
+
+		if (clusterSize <= 1) {
+			return 1.75;
+		}
+
+		const baseScale = 1.75 / Math.pow(clusterSize, 0.22);
+		return Math.max(0.95, Math.min(1.75, baseScale));
+	}
+
+	function getMarkerScalesForIndex(index: number, isMobile: boolean) {
+		const clusterSize = clusterSizeByIndex[index] ?? 1;
+		const densityScale = getClusterDensityScale(clusterSize, isMobile);
+		const hitDensityScale = getHitDensityScale(clusterSize, isMobile);
+
+		if (isMobile) {
+			return {
+				markerScale: (0.025 + 2.975 * currentZoomScale) * densityScale,
+				hitScale: (0.3 + 4.2 * currentZoomScale) * hitDensityScale
+			};
+		}
+
+		return {
+			markerScale: 0.5 * currentZoomScale * densityScale,
+			hitScale: 1.1 * currentZoomScale * hitDensityScale
+		};
+	}
+
+	function updatePlayingPulseAnchor() {
+		if (!playingStation) {
+			playingPulsePosition = null;
+			playingPulseMarkerScale = 0;
+			if (playingPulseMesh) {
+				playingPulseMesh.visible = false;
+			}
+			return;
+		}
+
+		const index = stationIndexById.get(playingStation.id);
+		if (typeof index !== 'number') {
+			playingPulsePosition = null;
+			playingPulseMarkerScale = 0;
+			if (playingPulseMesh) {
+				playingPulseMesh.visible = false;
+			}
+			return;
+		}
+
+		const isMobile = window.innerWidth < 672;
+		const { markerScale } = getMarkerScalesForIndex(index, isMobile);
+		playingPulsePosition = baseMarkerPositions[index].clone();
+		playingPulseMarkerScale = markerScale;
 	}
 
 	function applyMarkerLayout() {
@@ -368,16 +568,7 @@
 
 		for (let index = 0; index < visibleStations.length; index += 1) {
 			const point = baseMarkerPositions[index];
-			let markerScale: number;
-			let hitScale: number;
-
-			if (isMobile) {
-				markerScale = 0.025 + 2.975 * currentZoomScale;
-				hitScale = 0.3 + 4.2 * currentZoomScale;
-			} else {
-				markerScale = 0.5 * currentZoomScale;
-				hitScale = 1.1 * currentZoomScale;
-			}
+			const { markerScale, hitScale } = getMarkerScalesForIndex(index, isMobile);
 
 			dummy.position.copy(point);
 			dummy.scale.setScalar(markerScale);
@@ -391,6 +582,7 @@
 
 		markerMesh.instanceMatrix.needsUpdate = true;
 		markerHitMesh.instanceMatrix.needsUpdate = true;
+		updatePlayingPulseAnchor();
 	}
 
 	function rebuildMarkers() {
@@ -400,11 +592,11 @@
 
 		visibleStations = stations.slice();
 		clusterKeyByIndex = [];
+		clusterSizeByIndex = [];
+		stationIndexById = new Map<string, number>();
 		baseMarkerPositions = [];
 		hoveredIndex = -1;
 		hoveredClusterStations = [];
-		stickyClusterStations = [];
-		isSticky = false;
 		onhover?.(null);
 
 		if (markerMesh) {
@@ -439,17 +631,41 @@
 		markerHitMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 		markerHitMesh.frustumCulled = false;
 
+		const clusterCounts = new Map<string, number>();
+
 		for (let index = 0; index < visibleStations.length; index += 1) {
 			const station = visibleStations[index];
-			clusterKeyByIndex[index] = toClusterKey(station.lat, station.lon);
-			const basePoint = latLonToCartesian(station.lat, station.lon, radius, 0.04);
+			const clusterKey = toClusterKey(station.lat, station.lon);
+			stationIndexById.set(station.id, index);
+			clusterKeyByIndex[index] = clusterKey;
+			clusterCounts.set(clusterKey, (clusterCounts.get(clusterKey) ?? 0) + 1);
+			const basePoint = latLonToCartesian(station.lat, station.lon, radius, markerAltitude);
 			baseMarkerPositions[index] = new THREE.Vector3(basePoint.x, basePoint.y, basePoint.z);
+		}
+
+		for (let index = 0; index < visibleStations.length; index += 1) {
+			clusterSizeByIndex[index] = clusterCounts.get(clusterKeyByIndex[index]) ?? 1;
+		}
+
+		if (stickyStationIds && stickyStationIds.length > 0) {
+			const stickyIdSet = new Set(stickyStationIds);
+			stickyClusterStations = visibleStations.filter((station) => stickyIdSet.has(station.id));
+			isSticky = stickyClusterStations.length > 0;
+			if (!isSticky) {
+				stickyStationIds = null;
+			}
+		} else if (stickyClusterKey) {
+			setStickyCluster(stickyClusterKey);
+		} else {
+			stickyClusterStations = [];
+			isSticky = false;
 		}
 
 		earthGroup.add(markerMesh);
 		earthGroup.add(markerHitMesh);
 		applyMarkerLayout();
 		updateMarkerColors();
+		updatePlayingPulseAnchor();
 	}
 
 	function getIntersection(event: MouseEvent) {
@@ -485,12 +701,9 @@
 		}
 		const index = getIntersection(event);
 		if (typeof index === 'number') {
-			const clusterKey = clusterKeyByIndex[index];
-			stickyClusterStations = visibleStations.filter((_, i) => clusterKeyByIndex[i] === clusterKey);
-			isSticky = true;
+			setStickyCluster(clusterKeyByIndex[index]);
 		} else {
-			stickyClusterStations = [];
-			isSticky = false;
+			setStickyCluster(null);
 		}
 	}
 
@@ -535,6 +748,7 @@
 			return;
 		}
 
+		autoFocusPending = false;
 		pointerDownX = event.clientX;
 		pointerDownY = event.clientY;
 		pointerIsActive = true;
@@ -546,6 +760,10 @@
 		}
 
 		pointerIsActive = false;
+		if (Date.now() < suppressCanvasSelectionUntil) {
+			return;
+		}
+
 		lastPointerUpTime = Date.now();
 		const movement = Math.hypot(event.clientX - pointerDownX, event.clientY - pointerDownY);
 		if (movement > clickMovementThreshold) {
@@ -557,11 +775,46 @@
 			return;
 		}
 
+		const isMobile = window.innerWidth < 672;
+		const clusterKey = clusterKeyByIndex[index];
+		const clusterStations = clusterKey ? getStationsForClusterKey(clusterKey) : [];
+
+		if (isMobile && clusterStations.length > 1 && clusterKey) {
+			setStickyCluster(clusterKey);
+			return;
+		}
+
+		if (isMobile) {
+			const station = visibleStations[index];
+			const tapClusterKey = toClusterKey(station.lat, station.lon, mobileTapClusterGridDegrees);
+			const nearbyStations = getStationsForClusterKey(tapClusterKey, mobileTapClusterGridDegrees);
+			if (nearbyStations.length > 1) {
+				setStickyStations(nearbyStations);
+				return;
+			}
+		}
+
+		if (isSticky && clusterKey && clusterKey !== stickyClusterKey) {
+			setStickyCluster(clusterKey);
+		}
+
 		onselect?.(visibleStations[index]);
 	}
 
 	function resetPointerState() {
 		pointerIsActive = false;
+	}
+
+	function stopPanelInteraction(event: PointerEvent | MouseEvent) {
+		suppressCanvasSelectionUntil = Date.now() + 450;
+		event.stopPropagation();
+	}
+
+	function handleClusterItemSelect(event: MouseEvent, station: RadioStation) {
+		suppressCanvasSelectionUntil = Date.now() + 450;
+		event.preventDefault();
+		event.stopPropagation();
+		onselect?.(station);
 	}
 
 	function animate() {
@@ -579,6 +832,15 @@
 		}
 
 		animationFrame = window.requestAnimationFrame(animate);
+		if (autoFocusPending && !pointerIsActive) {
+			camera.position.lerp(focusCameraPosition, 0.12);
+			if (camera.position.distanceToSquared(focusCameraPosition) < 0.0001) {
+				camera.position.copy(focusCameraPosition);
+				autoFocusPending = false;
+			}
+			controls?.target.copy(globeCenter);
+		}
+
 		controls?.update();
 
 		const camDist = camera.position.length();
@@ -590,8 +852,23 @@
 			lastZoomScale = currentZoomScale;
 			applyMarkerLayout();
 			updateMarkerColors();
-			if (controls) {
-				controls.rotateSpeed = 0.08 + 0.52 * (1 - t);
+			updateControlSensitivity();
+		}
+
+		if (playingPulseMesh) {
+			if (playingPulsePosition && playingPulseMarkerScale > 0) {
+				const phase = (now % 1400) / 1400;
+				const pulseScale = playingPulseMarkerScale * (1.35 + phase * 2.6);
+				const pulseOpacity = 0.34 * (1 - phase);
+				playingPulseMesh.visible = true;
+				playingPulseMesh.position.copy(playingPulsePosition);
+				playingPulseMesh.scale.setScalar(pulseScale);
+				const material = playingPulseMesh.material;
+				if (material instanceof THREE.MeshBasicMaterial) {
+					material.opacity = pulseOpacity;
+				}
+			} else {
+				playingPulseMesh.visible = false;
 			}
 		}
 
@@ -602,7 +879,7 @@
 		try {
 			scene = new THREE.Scene();
 			camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-			camera.position.set(0, 0.2, 4.9);
+			camera.position.copy(defaultCameraPosition);
 
 			renderer = new THREE.WebGLRenderer({
 				antialias: true,
@@ -610,7 +887,6 @@
 				canvas
 			});
 			renderer.outputColorSpace = THREE.SRGBColorSpace;
-			renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
 			renderer.setClearColor(0x000000, 0);
 
 			controls = new OrbitControls(camera, renderer.domElement);
@@ -620,6 +896,7 @@
 			controls.minDistance = 1.15;
 			controls.maxDistance = 8;
 			controls.zoomSpeed = 1.2;
+			updateControlSensitivity();
 
 			createBackdrop();
 
@@ -652,6 +929,8 @@
 			earthGroup.add(atmosphere);
 			earthGroup.add(createCountryBorders());
 			earthGroup.add(createLatLonGrid());
+			playingPulseMesh = createPlayingPulse();
+			earthGroup.add(playingPulseMesh);
 
 			scene.add(new THREE.AmbientLight('#f2e6d2', 0.42));
 
@@ -673,6 +952,7 @@
 			container.addEventListener('contextmenu', handleContextMenu);
 			updateRendererSize();
 			rebuildMarkers();
+			sceneReady = true;
 			animate();
 		} catch (error) {
 			webglError =
@@ -689,6 +969,7 @@
 			container?.removeEventListener('pointerleave', clearHover);
 			container?.removeEventListener('contextmenu', handleContextMenu);
 			controls?.dispose();
+			sceneReady = false;
 
 			if (scene) {
 				disposeObject(scene);
@@ -699,11 +980,57 @@
 	});
 
 	$effect(() => {
-		rebuildMarkers();
+		stations;
+		untrack(() => rebuildMarkers());
 	});
 
 	$effect(() => {
 		updateMarkerColors();
+	});
+
+	$effect(() => {
+		playingStation?.id;
+		if (sceneReady) {
+			updatePlayingPulseAnchor();
+		}
+	});
+
+	$effect(() => {
+		if (!sceneReady) {
+			return;
+		}
+
+		focusKey;
+
+		if (!shouldAutoFocus || stations.length === 0) {
+			queueCameraFocus(defaultCameraPosition.clone());
+			return;
+		}
+
+		const target = getStationFocusTarget(stations);
+		if (!target) {
+			queueCameraFocus(defaultCameraPosition.clone());
+			return;
+		}
+
+		queueCameraFocus(buildFocusCameraPosition(target.lat, target.lon));
+	});
+
+	$effect(() => {
+		if (!sceneReady || !favoriteFocusStation) {
+			return;
+		}
+
+		favoriteFocusRequestId;
+		const favoriteFocusDistance =
+			window.innerWidth < 672 ? mobileFavoriteFocusDistance : desktopFavoriteFocusDistance;
+		queueCameraFocus(
+			buildFocusCameraPosition(
+				favoriteFocusStation.lat,
+				favoriteFocusStation.lon,
+				favoriteFocusDistance
+			)
+		);
 	});
 </script>
 
@@ -721,8 +1048,9 @@
 			<div
 				class="cluster-panel"
 				class:is-sticky={isSticky}
-				onpointerdown={(e) => e.stopPropagation()}
-				onpointerup={(e) => e.stopPropagation()}
+				onpointerdown={stopPanelInteraction}
+				onpointerup={stopPanelInteraction}
+				onclick={stopPanelInteraction}
 			>
 				<div class="cluster-header">
 					<span class="cluster-label">
@@ -735,14 +1063,20 @@
 							type="button"
 							class="cluster-close"
 							aria-label="Unpin cluster"
-							onclick={() => { isSticky = false; stickyClusterStations = []; }}
-						>×</button>
+							onclick={() => {
+								setStickyCluster(null);
+							}}>×</button
+						>
 					{/if}
 				</div>
 				<ul class="cluster-list">
 					{#each displayedClusterStations as station (station.id)}
 						<li>
-							<button type="button" class="cluster-item" onclick={() => onselect?.(station)}>
+							<button
+								type="button"
+								class="cluster-item"
+								onclick={(event) => handleClusterItemSelect(event, station)}
+							>
 								<span class="cluster-item-name">{station.name}</span>
 								{#if station.country}
 									<span class="cluster-item-country">{station.country}</span>
@@ -822,7 +1156,6 @@
 			<p>Try a modern browser with WebGL enabled.</p>
 		</div>
 	{/if}
-
 </div>
 
 <style>
@@ -1048,9 +1381,18 @@
 	}
 
 	@media (max-width: 768px) {
+		.cluster-panel {
+			left: 0.75rem;
+			right: 0.75rem;
+			top: auto;
+			bottom: calc(env(safe-area-inset-bottom, 0px) + 6.25rem);
+			transform: none;
+			width: auto;
+			max-height: min(32dvh, 14rem);
+		}
+
 		.debug-panel {
 			display: none;
 		}
 	}
-
 </style>
