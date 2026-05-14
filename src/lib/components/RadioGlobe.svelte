@@ -177,8 +177,8 @@
 		path(coastlines);
 		context.stroke();
 
-		context.strokeStyle = 'rgba(255, 255, 255, 0.075)';
-		context.lineWidth = 0.9;
+		context.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+		context.lineWidth = 1.8;
 		context.beginPath();
 		path(countryBorders);
 		context.stroke();
@@ -205,6 +205,64 @@
 		texture.wrapS = THREE.RepeatWrapping;
 		texture.offset.x = 0.25;
 		return texture;
+	}
+
+	function createCountryBorders() {
+		const group = new THREE.Group();
+		const countryMaterial = new THREE.LineBasicMaterial({
+			color: '#d4af99',
+			transparent: true,
+			opacity: 0.5,
+			linewidth: 2
+		});
+		const coastMaterial = new THREE.LineBasicMaterial({
+			color: '#7a7367',
+			transparent: true,
+			opacity: 0.25,
+			linewidth: 1.5
+		});
+
+		const atlas = countriesAtlas as {
+			objects: { countries: object; land: object };
+		};
+
+		// Country borders (between countries)
+		const countryBorders = mesh(
+			atlas as never,
+			atlas.objects.countries as never,
+			(left, right) => left !== right
+		);
+
+		if (countryBorders.type === 'MultiLineString') {
+			for (const lineString of countryBorders.coordinates) {
+				const points: THREE.Vector3[] = [];
+				for (const [lon, lat] of lineString) {
+					const point = latLonToCartesian(lat, lon, radius + 0.008, 0);
+					points.push(new THREE.Vector3(point.x, point.y, point.z));
+				}
+				if (points.length > 1) {
+					group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), countryMaterial));
+				}
+			}
+		}
+
+		// Coastlines (land touching ocean)
+		const coastlines = mesh(atlas as never, atlas.objects.land as never);
+
+		if (coastlines.type === 'MultiLineString') {
+			for (const lineString of coastlines.coordinates) {
+				const points: THREE.Vector3[] = [];
+				for (const [lon, lat] of lineString) {
+					const point = latLonToCartesian(lat, lon, radius + 0.008, 0);
+					points.push(new THREE.Vector3(point.x, point.y, point.z));
+				}
+				if (points.length > 1) {
+					group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), coastMaterial));
+				}
+			}
+		}
+
+		return group;
 	}
 
 	function createLatLonGrid() {
@@ -582,6 +640,7 @@
 				})
 			);
 			earthGroup.add(atmosphere);
+			earthGroup.add(createCountryBorders());
 			earthGroup.add(createLatLonGrid());
 
 			scene.add(new THREE.AmbientLight('#f2e6d2', 0.42));
