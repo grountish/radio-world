@@ -26,6 +26,7 @@
 		favoriteFocusStation?: RadioStation | null;
 		favoriteFocusRequestId?: number;
 		playingStation?: RadioStation | null;
+		debugOpen?: boolean;
 	};
 
 	let {
@@ -44,7 +45,8 @@
 		focusKey = '',
 		favoriteFocusStation = null,
 		favoriteFocusRequestId = 0,
-		playingStation = null
+		playingStation = null,
+		debugOpen = false
 	}: Props = $props();
 
 	let container: HTMLDivElement;
@@ -94,7 +96,6 @@
 	let lastZoomScale = -1;
 	let currentCamDist = 0;
 	let currentNormalizedZoom = 0;
-	let debugOpen = $state(false);
 	let debugStats = { fps: 0, visibleStations: 0, hoveredCount: 0 };
 	let frameCount = 0;
 	let lastFrameTime = Date.now();
@@ -1088,11 +1089,8 @@
 			</div>
 		{/if}
 
-		<div class="debug-panel" class:open={debugOpen}>
-			<button class="debug-toggle" type="button" onclick={() => (debugOpen = !debugOpen)}>
-				{debugOpen ? '▾' : '▸'} debug
-			</button>
-			{#if debugOpen}
+		{#if debugOpen}
+			<div class="debug-panel">
 				<div class="debug-info">
 					<div class="debug-section">performance</div>
 					<div class="debug-row">
@@ -1146,8 +1144,8 @@
 						<span class="debug-value">{isSticky ? 'yes' : 'no'}</span>
 					</div>
 				</div>
-			{/if}
-		</div>
+			</div>
+		{/if}
 	</div>
 
 	{#if webglError}
@@ -1190,11 +1188,11 @@
 	.cluster-panel {
 		position: absolute;
 		right: 1rem;
-		top: 50%;
-		transform: translateY(-50%);
+		bottom: 1rem;
+		transform: none;
 		z-index: 4;
 		width: min(18rem, calc(100vw - 2rem));
-		max-height: 60dvh;
+		max-height: min(45dvh, 23rem);
 		display: flex;
 		flex-direction: column;
 		background: rgba(0, 0, 0, 0.82);
@@ -1303,7 +1301,7 @@
 
 	.debug-panel {
 		position: absolute;
-		bottom: 1rem;
+		top: 3rem;
 		right: 1rem;
 		background: rgba(0, 0, 0, 0.75);
 		backdrop-filter: blur(10px);
@@ -1313,28 +1311,8 @@
 		pointer-events: auto;
 	}
 
-	.debug-toggle {
-		display: block;
-		width: 100%;
-		padding: 0.5rem 0.75rem;
-		border: 0;
-		background: transparent;
-		color: rgba(242, 230, 210, 0.7);
-		font-size: 0.65rem;
-		text-transform: lowercase;
-		cursor: pointer;
-		font: inherit;
-		text-align: left;
-		transition: color 0.1s;
-	}
-
-	.debug-toggle:hover {
-		color: #f18c34;
-	}
-
 	.debug-info {
 		padding: 0.5rem 0.75rem;
-		border-top: 1px solid rgba(241, 140, 52, 0.2);
 		font-size: 0.62rem;
 		font-family: 'Courier New', monospace;
 		color: rgba(242, 230, 210, 0.8);

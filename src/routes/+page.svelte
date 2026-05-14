@@ -26,6 +26,7 @@
 	let lastAutoplayStationId = '';
 	let favoriteIds = $state<Set<string>>(new Set());
 	let favoritesOpen = $state(false);
+	let debugOpen = $state(false);
 	let apiResponseTime = $state(0);
 	let isOnline = $state(true);
 	let rawApiStats = $state<any>(null);
@@ -131,9 +132,6 @@
 			}
 		}
 
-		const loadStartTime = performance.now();
-		const minLoadingTime = 1000;
-
 		try {
 			const startTime = performance.now();
 			const response = await fetch('/api/stations');
@@ -150,11 +148,6 @@
 			error =
 				cause instanceof Error ? cause.message : 'The live radio directory could not be reached.';
 		} finally {
-			const elapsedTime = performance.now() - loadStartTime;
-			const remainingTime = Math.max(0, minLoadingTime - elapsedTime);
-			if (remainingTime > 0) {
-				await new Promise((resolve) => setTimeout(resolve, remainingTime));
-			}
 			isLoading = false;
 		}
 
@@ -250,6 +243,20 @@
 			next.add(id);
 		}
 		favoriteIds = next;
+	}
+
+	function toggleFavoritesPanel() {
+		favoritesOpen = !favoritesOpen;
+		if (favoritesOpen) {
+			debugOpen = false;
+		}
+	}
+
+	function toggleDebugPanel() {
+		debugOpen = !debugOpen;
+		if (debugOpen) {
+			favoritesOpen = false;
+		}
 	}
 
 	function clearFilters() {
@@ -514,6 +521,7 @@
 					favoriteFocusStation={selectedStation}
 					{favoriteFocusRequestId}
 					{playingStation}
+					{debugOpen}
 				/>
 			{:catch}
 				<div class="loading-card error-card">
@@ -556,9 +564,19 @@
 		</div>
 
 		<div class="hud hud-fav-panel">
-			<button type="button" class="fav-toggle" onclick={() => (favoritesOpen = !favoritesOpen)}>
-				{favoritesOpen ? '▾' : '▸'} ♥ {favoriteIds.size}
-			</button>
+			<div class="panel-toggle-row">
+				<button type="button" class="fav-toggle" onclick={toggleFavoritesPanel}>
+					{favoritesOpen ? '▾' : '▸'} ♥ {favoriteIds.size}
+				</button>
+				<button
+					type="button"
+					class="fav-toggle debug-toggle-button"
+					class:active={debugOpen}
+					onclick={toggleDebugPanel}
+				>
+					{debugOpen ? '▾' : '▸'} debug
+				</button>
+			</div>
 			{#if favoritesOpen}
 				<div class="fav-list">
 					{#if favoriteStations.length === 0}
@@ -958,6 +976,17 @@
 
 	.filter-toggle.active {
 		background: rgba(241, 140, 52, 0.15);
+		color: var(--orange);
+	}
+
+	.panel-toggle-row {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 0.3rem;
+	}
+
+	.debug-toggle-button.active {
 		color: var(--orange);
 	}
 
