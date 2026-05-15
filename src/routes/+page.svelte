@@ -53,6 +53,8 @@
 	let urlStateRevision = $state(0);
 	let urlSyncLocked = $state(true);
 	let selectedThemeId = $state(DEFAULT_THEME_ID);
+	let currentTrackArtist = $state('');
+	let currentTrackTitle = $state('');
 	const initialLoadingAnimationMs = 650;
 	const loadingScrambleLoopMs = 1300;
 	const hasActiveFilters = $derived(query.trim().length > 0 || country !== 'all' || hiQualityOnly);
@@ -734,6 +736,58 @@
 
 		localStorage.setItem('radio-world-theme', selectedThemeId);
 	});
+
+	$effect(() => {
+		if (!audioElement) {
+			return;
+		}
+
+		const element = audioElement;
+
+		const extractMetadata = () => {
+			const metadata = (element as any)?.metadata;
+			if (metadata) {
+				currentTrackTitle = metadata.title || '';
+				currentTrackArtist = metadata.artist || '';
+				return;
+			}
+
+			// Try to extract from text tracks
+			for (let i = 0; i < element.textTracks.length; i++) {
+				const track = element.textTracks[i];
+				if (track.kind === 'metadata' && track.cues) {
+					for (let j = 0; j < track.cues.length; j++) {
+						const cue = track.cues[j];
+						const data = (cue as any)?.data;
+						if (data) {
+							currentTrackTitle = data.title || '';
+							currentTrackArtist = data.artist || '';
+							return;
+						}
+					}
+				}
+			}
+		};
+
+		const handleLoadStart = () => {
+			currentTrackTitle = '';
+			currentTrackArtist = '';
+		};
+
+		const handleTimeUpdate = () => {
+			extractMetadata();
+		};
+
+		element.addEventListener('loadstart', handleLoadStart);
+		element.addEventListener('loadedmetadata', extractMetadata);
+		element.addEventListener('timeupdate', handleTimeUpdate);
+
+		return () => {
+			element.removeEventListener('loadstart', handleLoadStart);
+			element.removeEventListener('loadedmetadata', extractMetadata);
+			element.removeEventListener('timeupdate', handleTimeUpdate);
+		};
+	});
 </script>
 
 <div class="page-shell" style={themeCssVars}>
@@ -1037,6 +1091,17 @@
 							text={`Lat ${spotlight.lat.toFixed(2)} / Lon ${spotlight.lon.toFixed(2)}`}
 						/>
 
+						{#if currentTrackTitle || currentTrackArtist}
+							<div class="track-info">
+								{#if currentTrackArtist}
+									<p class="track-artist">{currentTrackArtist}</p>
+								{/if}
+								{#if currentTrackTitle}
+									<p class="track-title">{currentTrackTitle}</p>
+								{/if}
+							</div>
+						{/if}
+
 						{#if spotlight.tags.length > 0}
 							<div class="tag-list">
 								{#each spotlight.tags.slice(0, 5) as tag (tag)}
@@ -1337,6 +1402,29 @@
 		line-height: 1.5;
 		color: var(--text-soft);
 		font-size: 0.78rem;
+	}
+
+	.track-info {
+		margin: 0.6rem 0 0;
+		padding: 0.5rem 0;
+		border-top: 1px solid rgba(var(--accent-rgb), 0.2);
+		border-bottom: 1px solid rgba(var(--accent-rgb), 0.2);
+	}
+
+	.track-artist {
+		margin: 0;
+		color: rgba(255, 255, 255, 0.6);
+		font-size: 0.72rem;
+		line-height: 1.4;
+		text-transform: lowercase;
+	}
+
+	.track-title {
+		margin: 0.2rem 0 0;
+		color: var(--orange);
+		font-size: 0.84rem;
+		line-height: 1.4;
+		font-weight: 500;
 	}
 
 	.station-icon {
