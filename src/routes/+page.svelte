@@ -1252,6 +1252,7 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.3rem;
+		width: 100px;
 	}
 
 	.metric-row span {
@@ -1967,7 +1968,6 @@
 
 	.theme-swatch-button:hover,
 	.theme-swatch-button.active {
-		outline-color: rgba(var(--accent-rgb), 0.75);
 		transform: scale(1.05);
 	}
 
