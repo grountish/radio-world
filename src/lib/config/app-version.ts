@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.9';
+export const APP_VERSION = '0.0.11';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,22 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.9',
+		version: '0.0.11',
 		label: 'current',
+		fixes: [
+			'added Worldwide FM from London as a curated station'
+		]
+	},
+	{
+		version: '0.0.10',
+		label: 'previous',
+		fixes: [
+			'added Oroko Radio from Accra, Ghana as a curated station'
+		]
+	},
+	{
+		version: '0.0.9',
+		label: 'previous',
 		fixes: [
 			'added a theme picker with five accent swatches in the top-right control row',
 			'replaced the fixed orange accent with a shared theme color across the HUD and globe',

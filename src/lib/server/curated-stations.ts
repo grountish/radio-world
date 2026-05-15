@@ -5,6 +5,14 @@ const ntsFavicon = 'https://www.nts.live/apple-touch-icon.png?v=47rE43RRzB';
 const londonLat = 51.5072;
 const londonLon = -0.1276;
 
+const orokoHomepage = 'https://oroko.live/';
+const orokoFavicon = 'https://oroko.live/favicon.ico';
+const accraLat = 5.6037;
+const accraLon = -0.1870;
+
+const worldwideFmHomepage = 'https://worldwidefm.net/';
+const worldwideFmFavicon = 'https://worldwidefm.net/favicon.ico';
+
 const curatedStations: RadioStation[] = [
 	{
 		id: 'nts-1',
@@ -37,6 +45,38 @@ const curatedStations: RadioStation[] = [
 		lat: londonLat,
 		lon: londonLon,
 		tags: ['nts', 'curated', 'electronic', 'global', 'live']
+	},
+	{
+		id: 'oroko',
+		name: 'Oroko Radio',
+		country: 'Ghana',
+		countryCode: 'GH',
+		language: 'English',
+		codec: 'MP3',
+		bitrate: 320,
+		votes: 100000,
+		homepage: orokoHomepage,
+		favicon: orokoFavicon,
+		streamUrl: 'https://oroko-radio.radiocult.fm/stream',
+		lat: accraLat,
+		lon: accraLon,
+		tags: ['oroko', 'curated', 'global', 'live', 'community']
+	},
+	{
+		id: 'worldwidefm',
+		name: 'Worldwide FM',
+		country: 'United Kingdom',
+		countryCode: 'GB',
+		language: 'English',
+		codec: 'MP3',
+		bitrate: 320,
+		votes: 100000,
+		homepage: worldwideFmHomepage,
+		favicon: worldwideFmFavicon,
+		streamUrl: 'https://worldwide-fm.radiocult.fm/stream',
+		lat: londonLat,
+		lon: londonLon,
+		tags: ['worldwide', 'curated', 'electronic', 'global', 'live']
 	}
 ];
 
