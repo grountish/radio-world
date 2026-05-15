@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.11';
+export const APP_VERSION = '0.0.13';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,24 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.11',
+		version: '0.0.13',
 		label: 'current',
+		fixes: [
+			'added Rinse FM from London as a curated station'
+		]
+	},
+	{
+		version: '0.0.12',
+		label: 'previous',
+		fixes: [
+			'added Japan City Pop from Tokyo as a curated station',
+			'added graceful fallback for Web Audio API when CORS blocks frequency data',
+			'visualizer now pulses smoothly even on CORS-restricted streams'
+		]
+	},
+	{
+		version: '0.0.11',
+		label: 'previous',
 		fixes: [
 			'added Worldwide FM from London as a curated station'
 		]
