@@ -137,6 +137,7 @@
 		let firstFrameId = 0;
 		let secondFrameId = 0;
 		let globeMountTimeoutId = 0;
+		let meltSequence = '';
 		const updateViewportState = () => {
 			const compact = window.innerWidth < 672;
 			if (compact !== isCompactViewport) {
@@ -147,6 +148,16 @@
 		};
 		const handlePopState = () => {
 			applyUrlState();
+		};
+		const handleKeyDown = (e: KeyboardEvent) => {
+			meltSequence += e.key.toLowerCase();
+			if (meltSequence.includes('melt')) {
+				toggleMelt();
+				meltSequence = '';
+			}
+			if (meltSequence.length > 4) {
+				meltSequence = meltSequence.slice(-4);
+			}
 		};
 
 		updateViewportState();
@@ -197,6 +208,7 @@
 			window.addEventListener('offline', () => (isOnline = false));
 			window.addEventListener('resize', updateViewportState);
 			window.addEventListener('popstate', handlePopState);
+			window.addEventListener('keydown', handleKeyDown);
 		}
 
 		urlStateReady = true;
@@ -209,6 +221,7 @@
 			if (typeof window !== 'undefined') {
 				window.removeEventListener('resize', updateViewportState);
 				window.removeEventListener('popstate', handlePopState);
+				window.removeEventListener('keydown', handleKeyDown);
 			}
 		};
 	});
@@ -945,16 +958,6 @@
 						aria-hidden="true"
 						style={`--theme-swatch: ${selectedTheme.accent};`}
 					></span>
-				</button>
-				<button
-					type="button"
-					class="fav-toggle icon-toggle-button"
-					class:active={meltActive}
-					onclick={toggleMelt}
-					aria-label={meltActive ? 'Disable melt mode' : 'Enable melt mode'}
-					title="Melt"
-				>
-					<span aria-hidden="true">≋</span>
 				</button>
 			</div>
 			{#if favoritesOpen}

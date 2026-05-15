@@ -125,6 +125,7 @@
 	let bordersGroup: THREE.Group | null = null;
 	let meltBordersGroup: THREE.Group | null = null;
 	let meltMaterial: THREE.ShaderMaterial | null = null;
+	let meltStartTime = 0;
 
 	function applyThemeAccent() {
 		const accent = new THREE.Color(themeAccent);
@@ -925,6 +926,11 @@
 
 		controls?.update();
 
+		// Auto-rotate globe when melt mode is active
+		if (meltActive && earthGroup) {
+			earthGroup.rotation.y += 0.0003;
+		}
+
 		const camDist = camera.position.length();
 		const t = Math.max(0, Math.min(1, (camDist - 1.15) / (8 - 1.15)));
 		currentCamDist = camDist;
@@ -955,7 +961,8 @@
 		}
 
 		if (meltMaterial && meltActive) {
-			meltMaterial.uniforms.uTime.value = now * 0.001;
+			const t = (now - meltStartTime) * 0.001;
+			meltMaterial.uniforms.uTime.value = t;
 		}
 
 		renderer.render(scene, camera);
@@ -1129,43 +1136,87 @@
 		);
 	});
 
+
 	$effect(() => {
 		if (!earthGroup || !bordersGroup) return;
 
 		if (meltActive) {
+			meltStartTime = Date.now();
+			// Zoom out for melt mode
+			if (camera) {
+				const newCameraPos = camera.position.clone().normalize().multiplyScalar(6.5);
+				queueCameraFocus(newCameraPos);
+			}
 			if (!meltBordersGroup) {
 				meltMaterial = new THREE.ShaderMaterial({
 					uniforms: { uTime: { value: 0 } },
 					vertexShader: `
 						uniform float uTime;
 						varying vec3 vPos;
+						varying float vEcho;
 
 						void main() {
 							vPos = position;
+							vec3 pos = position;
+							vec3 n = normalize(position);
+
+							// Main distortion with high-frequency waves
 							float d =
-								sin(position.x * 8.0  + uTime * 0.9) * 0.018 +
-								sin(position.y * 11.0 + uTime * 1.2) * 0.014 +
-								sin(position.z * 7.0  + uTime * 0.6) * 0.016 +
-								sin((position.x + position.z) * 14.0 + uTime * 1.6) * 0.010;
-							vec3 displaced = position + normalize(position) * d;
-							gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+								sin(position.x * 12.0 + uTime * 1.5) * 0.025 +
+								sin(position.y * 15.0 + uTime * 2.0) * 0.022 +
+								sin(position.z * 10.0 + uTime * 1.2) * 0.025 +
+								sin((position.x + position.y) * 20.0 + uTime * 1.8) * 0.018 +
+								sin((position.y + position.z) * 18.0 + uTime * 1.4) * 0.018 +
+								sin((position.x + position.z) * 22.0 + uTime * 1.6) * 0.018 +
+								sin((position.x * 2.0 + position.y) * 28.0 + uTime * 2.2) * 0.015 +
+								sin((position.y * 2.0 + position.z) * 26.0 + uTime * 1.9) * 0.015 +
+								sin((position.x * 3.0 + position.z) * 32.0 + uTime * 2.4) * 0.012 +
+								sin((position.x + position.y + position.z) * 30.0 + uTime * 2.1) * 0.012 +
+								sin(position.x * 18.0 + uTime * 1.3) * 0.008 +
+								sin(position.y * 22.0 + uTime * 1.7) * 0.008;
+
+							// Echo/ghost with time offset - different frequency creates interference
+							float dEcho =
+								sin(position.x * 12.0 + (uTime - 0.3) * 1.5) * 0.020 +
+								sin(position.y * 15.0 + (uTime - 0.3) * 2.0) * 0.020 +
+								sin(position.z * 10.0 + (uTime - 0.3) * 1.2) * 0.020 +
+								sin((position.x + position.y) * 20.0 + (uTime - 0.3) * 1.8) * 0.015;
+							vEcho = dEcho;
+
+							// Add echo on top of main distortion - creates visible interference pattern
+							pos += n * d;
+							pos += n * dEcho * 0.5;
+
+							gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 						}
 					`,
 					fragmentShader: `
 						uniform float uTime;
 						varying vec3 vPos;
+						varying float vEcho;
 
 						void main() {
 							vec3 a = vec3(0.5, 0.5, 0.5);
 							vec3 b = vec3(0.5, 0.5, 0.5);
 							vec3 c = vec3(1.0, 0.7, 0.4);
-							vec3 d = vec3(0.00, 0.15, 0.20);
-							float t = uTime * 0.22 + length(vPos) * 1.8;
+							vec3 d = vec3(0.0, 0.15, 0.25);
+							float t = uTime * 0.3 + length(vPos) * 1.5;
 							vec3 col = a + b * cos(6.28318 * (c * t + d));
-							gl_FragColor = vec4(col, 0.9);
+
+							// Echo ghost - offset time creates trailing color effect
+							vec3 echoCol = a + b * cos(6.28318 * (c * (t - 0.5) + d));
+
+							// Use echo value to modulate between current and ghost color
+							float echoStrength = abs(vEcho) * 0.15 + 0.1;
+							col = mix(col, echoCol, echoStrength);
+
+							// Add slight alpha modulation based on echo for transparency effect
+							float alpha = 1.0 - abs(vEcho) * 0.05;
+
+							gl_FragColor = vec4(col, alpha);
 						}
 					`,
-					transparent: true
+					fog: false
 				});
 				meltBordersGroup = createMeltBorders();
 				earthGroup.add(meltBordersGroup);
