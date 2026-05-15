@@ -758,6 +758,15 @@
 	});
 
 	$effect(() => {
+		if (hasActiveFilters) {
+			favoritesOpen = false;
+			debugOpen = false;
+			versionLogOpen = false;
+			themePanelOpen = false;
+		}
+	});
+
+	$effect(() => {
 		if (!audioElement) {
 			return;
 		}
@@ -1246,6 +1255,23 @@
 			{/if}
 		</div>
 
+		{#if hasActiveFilters}
+			<div class="hud hud-search-panel">
+				<div class="fav-list">
+					{#if visibleStations.length === 0}
+						<p class="fav-empty">no results</p>
+					{:else}
+						{#each visibleStations as station (station.id)}
+							<button type="button" class="fav-item" onclick={() => pickStation(station)}>
+								<span class="fav-name">{station.name}</span>
+								{#if station.country}<span class="fav-country">{station.country}</span>{/if}
+							</button>
+						{/each}
+					{/if}
+				</div>
+			</div>
+		{/if}
+
 		<audio bind:this={audioElement} class="hidden-audio" preload="auto"></audio>
 	</section>
 </div>
@@ -1321,6 +1347,18 @@
 	.hud-bottom {
 		bottom: 3rem;
 		max-width: min(32rem, calc(100vw - 2rem));
+	}
+
+	.hud-search-panel {
+		bottom: 3rem;
+		right: 1rem;
+		left: auto;
+		max-width: min(24rem, calc(100vw - 2rem));
+		pointer-events: auto;
+	}
+
+	.hud-search-panel .fav-list {
+		max-height: 60vh;
 	}
 
 	.filter-row,
@@ -1884,6 +1922,12 @@
 
 		.hud-bottom {
 			bottom: calc(0.75rem + 50px);
+			max-width: calc(100vw - 1.5rem);
+		}
+
+		.hud-search-panel {
+			bottom: calc(0.75rem + 50px);
+			right: 0.75rem;
 			max-width: calc(100vw - 1.5rem);
 		}
 

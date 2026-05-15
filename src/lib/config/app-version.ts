@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.14';
+export const APP_VERSION = '0.0.15';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,17 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.14',
+		version: '0.0.15',
 		label: 'current',
+		fixes: [
+			'added pinned search results panel at bottom-right that auto-shows when filtering',
+			'search panel automatically closes other panels (favorites, stats, etc.) when active',
+			'search results use the same scrollable list component as favorites for consistency'
+		]
+	},
+	{
+		version: '0.0.14',
+		label: 'previous',
 		fixes: [
 			'improved missing favicon fallback with color-coded initials instead of generic icon',
 			'fixed auto-focus zoom depth when searching to prevent extreme close-up views',
