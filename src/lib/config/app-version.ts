@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.7';
+export const APP_VERSION = '0.0.8';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,18 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.7',
+		version: '0.0.8',
 		label: 'current',
+		fixes: [
+			'kept the top mobile search bar clear by moving favorites, stats, and version controls below it',
+			'let the mobile filter row use the full viewport width again',
+			'preserved the icon-only top-right controls without overlapping the search UI',
+			'corrected the CSS rule-order issue so the mobile HUD layout actually applies'
+		]
+	},
+	{
+		version: '0.0.7',
+		label: 'previous',
 		fixes: [
 			'converted top-right stats and version log toggles to icon-only buttons',
 			'removed chevrons from the top-right controls and use orange active state instead',

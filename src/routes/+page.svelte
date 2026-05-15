@@ -1685,7 +1685,7 @@
 
 		.hud-top {
 			top: 0.75rem;
-			max-width: calc(100vw - 6rem);
+			max-width: calc(100vw - 1.5rem);
 		}
 
 		.hud-bottom {
@@ -1694,7 +1694,6 @@
 		}
 
 		.filter-row {
-			grid-template-columns: 1fr;
 			gap: 0.2rem;
 		}
 
@@ -1704,12 +1703,6 @@
 
 		.meta-row {
 			display: none;
-		}
-
-		.hud-fav-panel {
-			top: 0.75rem;
-			right: 0.75rem;
-			left: auto;
 		}
 
 		.spotlight-meta {
@@ -1961,6 +1954,20 @@
 
 	.version-log-fixes li + li {
 		margin-top: 0.3rem;
+	}
+
+	@media (max-width: 42rem) {
+		.hud-fav-panel {
+			top: 3rem;
+			right: 0.75rem;
+			left: auto;
+			max-width: calc(100vw - 1.5rem);
+		}
+
+		.fav-list,
+		.version-log-panel {
+			width: min(24rem, calc(100vw - 1.5rem));
+		}
 	}
 
 	.fav-button {
