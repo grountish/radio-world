@@ -1,3 +1,4 @@
+import { APP_USER_AGENT } from '$lib/config/app-version';
 import type { RadioStation } from '$lib/types/radio';
 import { getCuratedStations } from '$lib/server/curated-stations';
 
@@ -171,7 +172,7 @@ async function validateStreamUrl(streamUrl: string): Promise<boolean> {
 			redirect: 'follow',
 			signal: controller.signal,
 			headers: {
-				'user-agent': 'radio-world/0.0.1',
+				'user-agent': APP_USER_AGENT,
 				accept: '*/*',
 				'icy-metadata': '1'
 			}
@@ -295,7 +296,7 @@ async function fetchStationPage(offset: number): Promise<RawStation[]> {
 
 	const response = await fetch(url, {
 		headers: {
-			'user-agent': 'radio-world/0.0.1'
+			'user-agent': APP_USER_AGENT
 		}
 	});
 

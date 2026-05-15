@@ -2,6 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import RadioGlobe from '$lib/components/RadioGlobe.svelte';
 	import ScrambleText from '$lib/components/ScrambleText.svelte';
+	import { VERSION_HISTORY } from '$lib/config/app-version';
 	import type { RadioStation, RadioStationPayload } from '$lib/types/radio';
 	import { buildRadioUrl, parseRadioUrlState } from '$lib/utils/radio-url';
 
@@ -37,6 +38,7 @@
 	let favoriteIds = $state<Set<string>>(new Set());
 	let favoritesOpen = $state(false);
 	let debugOpen = $state(false);
+	let versionLogOpen = $state(false);
 	let apiResponseTime = $state(0);
 	let isOnline = $state(true);
 	let rawApiStats = $state<any>(null);
@@ -279,6 +281,7 @@
 		favoritesOpen = !favoritesOpen;
 		if (favoritesOpen) {
 			debugOpen = false;
+			versionLogOpen = false;
 		}
 	}
 
@@ -286,6 +289,15 @@
 		debugOpen = !debugOpen;
 		if (debugOpen) {
 			favoritesOpen = false;
+			versionLogOpen = false;
+		}
+	}
+
+	function toggleVersionLogPanel() {
+		versionLogOpen = !versionLogOpen;
+		if (versionLogOpen) {
+			favoritesOpen = false;
+			debugOpen = false;
 		}
 	}
 
@@ -763,16 +775,33 @@
 
 		<div class="hud hud-fav-panel">
 			<div class="panel-toggle-row">
-				<button type="button" class="fav-toggle" onclick={toggleFavoritesPanel}>
-					{favoritesOpen ? '▾' : '▸'} ♥ {favoriteIds.size}
+				<button
+					type="button"
+					class="fav-toggle"
+					class:active={favoritesOpen}
+					onclick={toggleFavoritesPanel}
+				>
+					♥ {favoriteIds.size}
 				</button>
 				<button
 					type="button"
-					class="fav-toggle debug-toggle-button"
+					class="fav-toggle icon-toggle-button debug-toggle-button"
 					class:active={debugOpen}
 					onclick={toggleDebugPanel}
+					aria-label={debugOpen ? 'Collapse stats panel' : 'Expand stats panel'}
+					title="Stats"
 				>
-					{debugOpen ? '▾' : '▸'} debug
+					<span aria-hidden="true">▥</span>
+				</button>
+				<button
+					type="button"
+					class="fav-toggle icon-toggle-button version-log-toggle-button"
+					class:active={versionLogOpen}
+					onclick={toggleVersionLogPanel}
+					aria-label={versionLogOpen ? 'Collapse version log panel' : 'Expand version log panel'}
+					title="Version Log"
+				>
+					<span aria-hidden="true">◷</span>
 				</button>
 			</div>
 			{#if favoritesOpen}
@@ -787,6 +816,23 @@
 							</button>
 						{/each}
 					{/if}
+				</div>
+			{/if}
+			{#if versionLogOpen}
+				<div class="version-log-panel">
+					{#each VERSION_HISTORY as release (release.version)}
+						<section class="version-log-entry">
+							<div class="version-log-header">
+								<p class="version-log-version">{release.version}</p>
+								<p class="version-log-label">{release.label}</p>
+							</div>
+							<ul class="version-log-fixes">
+								{#each release.fixes as fix (fix)}
+									<li>{fix}</li>
+								{/each}
+							</ul>
+						</section>
+					{/each}
 				</div>
 			{/if}
 		</div>
@@ -1184,7 +1230,7 @@
 		gap: 0.3rem;
 	}
 
-	.debug-toggle-button.active {
+	.fav-toggle.active {
 		color: var(--orange);
 	}
 
@@ -1776,7 +1822,7 @@
 		top: 0.75rem;
 		right: 1rem;
 		left: auto;
-		max-width: 16rem;
+		max-width: 24rem;
 		pointer-events: auto;
 		display: flex;
 		flex-direction: column;
@@ -1789,15 +1835,22 @@
 		border-radius: 0;
 		padding: 0.3rem 0.5rem;
 		background: rgba(0, 0, 0, 0.54);
-		color: var(--text-soft);
+		color: var(--ink);
 		font-size: 0.85rem;
 		line-height: 1;
 		cursor: pointer;
 		font-weight: 500;
+		transition: color 0.1s ease;
 	}
 
 	.fav-toggle:hover {
 		color: var(--orange);
+	}
+
+	.icon-toggle-button {
+		min-width: 2.4rem;
+		padding-inline: 0.45rem;
+		text-align: center;
 	}
 
 	.fav-list {
@@ -1846,6 +1899,68 @@
 		color: var(--text-soft);
 		font-size: 0.66rem;
 		text-transform: lowercase;
+	}
+
+	.version-log-panel {
+		width: min(24rem, calc(100vw - 2rem));
+		background: var(--panel-bg);
+		backdrop-filter: blur(10px);
+		margin-top: 0.3rem;
+		max-height: 60vh;
+		overflow-y: auto;
+		padding: 0.85rem 1rem 0.95rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.85rem;
+	}
+
+	.version-log-entry {
+		display: flex;
+		flex-direction: column;
+		gap: 0.45rem;
+		padding-top: 0.1rem;
+	}
+
+	.version-log-entry + .version-log-entry {
+		padding-top: 0.8rem;
+		border-top: 1px solid rgba(242, 230, 210, 0.08);
+	}
+
+	.version-log-header {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+
+	.version-log-version,
+	.version-log-label {
+		margin: 0;
+	}
+
+	.version-log-version {
+		color: var(--ink);
+		font-size: 0.86rem;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+	}
+
+	.version-log-label {
+		color: var(--orange);
+		font-size: 0.65rem;
+		text-transform: lowercase;
+	}
+
+	.version-log-fixes {
+		margin: 0;
+		padding: 0 0 0 1rem;
+		color: var(--text-soft);
+		font-size: 0.72rem;
+		line-height: 1.45;
+	}
+
+	.version-log-fixes li + li {
+		margin-top: 0.3rem;
 	}
 
 	.fav-button {
