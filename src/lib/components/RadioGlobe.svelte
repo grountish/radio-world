@@ -1054,7 +1054,7 @@
 			return;
 		}
 
-		queueCameraFocus(buildFocusCameraPosition(target.lat, target.lon));
+		queueCameraFocus(buildFocusCameraPosition(target.lat, target.lon, 2.0));
 	});
 
 	$effect(() => {

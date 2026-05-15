@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.13';
+export const APP_VERSION = '0.0.14';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,10 +9,12 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.13',
+		version: '0.0.14',
 		label: 'current',
 		fixes: [
-			'added Rinse FM from London as a curated station'
+			'improved missing favicon fallback with color-coded initials instead of generic icon',
+			'fixed auto-focus zoom depth when searching to prevent extreme close-up views',
+			'added Rinse FM from London and Japan City Pop from Tokyo as curated stations'
 		]
 	},
 	{

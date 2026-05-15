@@ -340,6 +340,26 @@
 		hiQualityOnly = false;
 	}
 
+	function getStationInitials(name: string): string {
+		return name
+			.split(' ')
+			.slice(0, 2)
+			.map((word) => word[0])
+			.join('')
+			.toUpperCase();
+	}
+
+	function getStationBg(stationId: string): string {
+		const hues = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, 195, 210, 225, 240, 255, 270, 285, 300, 315, 330, 345];
+		let hash = 0;
+		for (let i = 0; i < stationId.length; i++) {
+			hash = ((hash << 5) - hash) + stationId.charCodeAt(i);
+			hash |= 0;
+		}
+		const hue = hues[Math.abs(hash) % hues.length];
+		return `hsl(${hue}, 65%, 55%)`;
+	}
+
 	function formatTime(totalSeconds: number) {
 		if (!Number.isFinite(totalSeconds) || totalSeconds < 0) {
 			return '0:00';
@@ -1078,10 +1098,19 @@
 									class="station-icon"
 									src={spotlight.favicon}
 									loading="lazy"
-									onerror={() => failedFavicons.add(spotlight.id)}
+									onerror={(e) => {
+										failedFavicons.add(spotlight.id);
+									}}
 								/>
-							{:else if spotlight.favicon}
-								<div class="station-icon-fallback" title={spotlight.name}>▶︎</div>
+							{/if}
+							{#if !spotlight.favicon || failedFavicons.has(spotlight.id)}
+								<div
+									class="station-icon-fallback"
+									title={spotlight.name}
+									style={`background: ${getStationBg(spotlight.id)};`}
+								>
+									{getStationInitials(spotlight.name)}
+								</div>
 							{/if}
 						</div>
 
@@ -1440,19 +1469,15 @@
 		width: 2.2rem;
 		height: 2.2rem;
 		border-radius: 0;
-		background: linear-gradient(
-			135deg,
-			rgba(var(--accent-rgb), 0.2),
-			rgba(var(--accent-rgb), 0.1)
-		);
-		border: 1px solid rgba(var(--accent-rgb), 0.3);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		flex-shrink: 0;
-		color: rgba(var(--accent-rgb), 0.8);
-		font-size: 0.9rem;
+		color: #ffffff;
+		font-size: 0.75rem;
+		font-weight: 600;
 		line-height: 1;
+		letter-spacing: 0.05em;
 	}
 
 	.tag-list {
