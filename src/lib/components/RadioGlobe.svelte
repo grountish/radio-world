@@ -14,6 +14,8 @@
 		selectedStation?: RadioStation | null;
 		onselect?: (station: RadioStation | null) => void;
 		onhover?: (station: RadioStation | null) => void;
+		onready?: () => void;
+		oniniterror?: (message: string) => void;
 		apiResponseTime?: number;
 		dataAge?: string;
 		apiError?: string;
@@ -34,6 +36,8 @@
 		selectedStation = null,
 		onselect = undefined,
 		onhover = undefined,
+		onready = undefined,
+		oniniterror = undefined,
 		apiResponseTime = 0,
 		dataAge = '',
 		apiError = '',
@@ -954,10 +958,12 @@
 			updateRendererSize();
 			rebuildMarkers();
 			sceneReady = true;
+			onready?.();
 			animate();
 		} catch (error) {
 			webglError =
 				error instanceof Error ? error.message : 'WebGL could not be initialized in this browser.';
+			oniniterror?.(webglError);
 		}
 
 		return () => {
@@ -1188,7 +1194,7 @@
 	.cluster-panel {
 		position: absolute;
 		right: 1rem;
-		bottom: 1rem;
+		bottom: 3rem;
 		transform: none;
 		z-index: 4;
 		width: min(18rem, calc(100vw - 2rem));

@@ -1,16 +1,21 @@
 <script lang="ts">
-	import { onMount, tick, untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import RadioGlobe from '$lib/components/RadioGlobe.svelte';
 	import ScrambleText from '$lib/components/ScrambleText.svelte';
 	import type { RadioStation, RadioStationPayload } from '$lib/types/radio';
 	import { buildRadioUrl, parseRadioUrlState } from '$lib/utils/radio-url';
+
+	type HlsClass = typeof import('hls.js').default;
+	type HlsInstance = import('hls.js').default;
 
 	let stations = $state<RadioStation[]>([]);
 	let stats = $state<RadioStationPayload['stats'] | null>(null);
 	let isLoading = $state(true);
 	let error = $state('');
-	let globeModule = $state<Promise<typeof import('$lib/components/RadioGlobe.svelte')> | null>(
-		null
-	);
+	let shouldMountGlobe = $state(false);
+	let globeReady = $state(false);
+	let globeFailed = $state(false);
+	let loadingScrambleCycle = $state(0);
 	let query = $state('');
 	let country = $state('all');
 	let hiQualityOnly = $state(false);
@@ -23,7 +28,12 @@
 	let isMuted = $state(false);
 	let volume = $state(0.85);
 	let elapsed = $state(0);
-	let lastAutoplayStationId = '';
+	let loadedStationId = '';
+	let loadedStreamUrl = '';
+	let hlsPlayer: HlsInstance | null = null;
+	let hlsClass: HlsClass | null = null;
+	let sourcePreparationKey = '';
+	let sourcePreparationPromise: Promise<boolean> | null = null;
 	let favoriteIds = $state<Set<string>>(new Set());
 	let favoritesOpen = $state(false);
 	let debugOpen = $state(false);
@@ -38,10 +48,13 @@
 	let pendingUrlStationId = $state('');
 	let urlStateRevision = $state(0);
 	let urlSyncLocked = $state(true);
+	const initialLoadingAnimationMs = 650;
+	const loadingScrambleLoopMs = 1300;
 	const hasActiveFilters = $derived(query.trim().length > 0 || country !== 'all' || hiQualityOnly);
 	const focusKey = $derived(
 		`${query.trim().toLowerCase()}|${country}|${hiQualityOnly ? '1' : '0'}`
 	);
+	const showLoadingOverlay = $derived(!error && (isLoading || (!globeReady && !globeFailed)));
 
 	const dataAge = $derived.by(() => {
 		if (!stats?.updatedAt) return '';
@@ -107,6 +120,9 @@
 	}
 
 	onMount(async () => {
+		let firstFrameId = 0;
+		let secondFrameId = 0;
+		let globeMountTimeoutId = 0;
 		const updateViewportState = () => {
 			const compact = window.innerWidth < 672;
 			if (compact !== isCompactViewport) {
@@ -121,7 +137,13 @@
 
 		updateViewportState();
 		applyUrlState();
-		globeModule = import('$lib/components/RadioGlobe.svelte');
+		firstFrameId = requestAnimationFrame(() => {
+			secondFrameId = requestAnimationFrame(() => {
+				globeMountTimeoutId = window.setTimeout(() => {
+					shouldMountGlobe = true;
+				}, initialLoadingAnimationMs);
+			});
+		});
 
 		const saved = localStorage.getItem('radio-world-favorites');
 		if (saved) {
@@ -161,6 +183,10 @@
 		urlStateReady = true;
 
 		return () => {
+			cancelAnimationFrame(firstFrameId);
+			cancelAnimationFrame(secondFrameId);
+			window.clearTimeout(globeMountTimeoutId);
+			destroyHlsPlayer();
 			if (typeof window !== 'undefined') {
 				window.removeEventListener('resize', updateViewportState);
 				window.removeEventListener('popstate', handlePopState);
@@ -229,10 +255,14 @@
 
 	function pickStation(station: RadioStation | null) {
 		setSelectedStation(station, { focus: true });
+		if (station) {
+			void playStation(station, 'Station selection playback failed');
+		}
 	}
 
 	function pickFavoriteStation(station: RadioStation) {
 		setSelectedStation(station, { focus: true });
+		void playStation(station, 'Favorite station playback failed');
 	}
 
 	function toggleFavorite(id: string) {
@@ -291,19 +321,185 @@
 		isBuffering = nextStatus === 'buffering';
 	}
 
-	async function togglePlayback() {
+	function isHlsStreamUrl(streamUrl: string) {
+		return /\.m3u8($|[?#])/i.test(streamUrl);
+	}
+
+	function destroyHlsPlayer() {
+		if (!hlsPlayer) {
+			return;
+		}
+
+		hlsPlayer.destroy();
+		hlsPlayer = null;
+	}
+
+	async function getHlsClass() {
+		if (hlsClass) {
+			return hlsClass;
+		}
+
+		const module = await import('hls.js');
+		hlsClass = module.default;
+		return hlsClass;
+	}
+
+	async function attachHlsStream(streamUrl: string) {
 		if (!audioElement) {
 			return;
 		}
 
-		if (audioElement.paused) {
-			setPlaybackStatus('buffering');
-			try {
-				await audioElement.play();
-			} catch (error) {
-				setPlaybackStatus('error');
-				console.warn('Manual playback failed', error);
+		const media = audioElement;
+		const Hls = await getHlsClass();
+		if (Hls.isSupported()) {
+			await new Promise<void>((resolve, reject) => {
+				const player = new Hls();
+				hlsPlayer = player;
+				let settled = false;
+
+				const cleanup = () => {
+					player.off(Hls.Events.MEDIA_ATTACHED, handleMediaAttached);
+					player.off(Hls.Events.MANIFEST_PARSED, handleManifestParsed);
+					player.off(Hls.Events.ERROR, handleError);
+					media.removeEventListener('canplay', handleCanPlay);
+					media.removeEventListener('loadedmetadata', handleCanPlay);
+				};
+
+				const finish = (callback: () => void) => {
+					if (settled) {
+						return;
+					}
+
+					settled = true;
+					cleanup();
+					callback();
+				};
+
+				const handleMediaAttached = () => {
+					player.loadSource(streamUrl);
+				};
+
+				const handleManifestParsed = () => {
+					if (media.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+						finish(resolve);
+					}
+				};
+
+				const handleCanPlay = () => {
+					finish(resolve);
+				};
+
+				const handleError = (
+					_event: string,
+					data: { fatal: boolean; details?: string; type?: string }
+				) => {
+					if (!data.fatal) {
+						return;
+					}
+
+					finish(() => reject(new Error(data.details || data.type || 'Unable to load HLS stream.')));
+				};
+
+				player.on(Hls.Events.MEDIA_ATTACHED, handleMediaAttached);
+				player.on(Hls.Events.MANIFEST_PARSED, handleManifestParsed);
+				player.on(Hls.Events.ERROR, handleError);
+				media.addEventListener('canplay', handleCanPlay);
+				media.addEventListener('loadedmetadata', handleCanPlay);
+				player.attachMedia(media);
+			});
+			return;
+		}
+
+		if (media.canPlayType('application/vnd.apple.mpegurl')) {
+			media.src = streamUrl;
+			media.load();
+			return;
+		}
+
+		throw new Error('HLS playback is not supported in this browser.');
+	}
+
+	async function prepareSelectedStationAudio(station: RadioStation | null) {
+		if (!audioElement) {
+			return false;
+		}
+
+		const preparationKey = station ? `${station.id}|${station.streamUrl}` : '__none__';
+		if (sourcePreparationPromise && sourcePreparationKey === preparationKey) {
+			return sourcePreparationPromise;
+		}
+
+		sourcePreparationKey = preparationKey;
+		sourcePreparationPromise = (async () => {
+			if (!station) {
+				audioElement.pause();
+				destroyHlsPlayer();
+				if (loadedStationId || audioElement.getAttribute('src')) {
+					audioElement.removeAttribute('src');
+					audioElement.load();
+				}
+				loadedStationId = '';
+				loadedStreamUrl = '';
+				elapsed = 0;
+				isPlaying = false;
+				setPlaybackStatus('idle');
+				return false;
 			}
+
+			if (loadedStationId === station.id && loadedStreamUrl === station.streamUrl) {
+				return true;
+			}
+
+			audioElement.pause();
+			destroyHlsPlayer();
+			audioElement.removeAttribute('src');
+
+			if (isHlsStreamUrl(station.streamUrl)) {
+				await attachHlsStream(station.streamUrl);
+			} else {
+				audioElement.src = station.streamUrl;
+				audioElement.load();
+			}
+
+			audioElement.currentTime = 0;
+			loadedStationId = station.id;
+			loadedStreamUrl = station.streamUrl;
+			elapsed = 0;
+			isPlaying = false;
+			return true;
+		})();
+
+		try {
+			return await sourcePreparationPromise;
+		} finally {
+			if (sourcePreparationKey === preparationKey) {
+				sourcePreparationPromise = null;
+			}
+		}
+	}
+
+	async function playStation(station: RadioStation, failureLabel: string) {
+		if (!audioElement) {
+			return;
+		}
+
+		try {
+			await prepareSelectedStationAudio(station);
+			setPlaybackStatus('buffering');
+			await audioElement.play();
+		} catch (error) {
+			setPlaybackStatus('error');
+			console.warn(failureLabel, error);
+		}
+	}
+
+	async function togglePlayback() {
+		if (!audioElement || !selectedStation) {
+			return;
+		}
+
+		if (audioElement.paused) {
+			await playStation(selectedStation, 'Manual playback failed');
 			return;
 		}
 
@@ -336,31 +532,20 @@
 		syncAudioState();
 	}
 
+	function handleGlobeReady() {
+		globeFailed = false;
+		globeReady = true;
+	}
+
+	function handleGlobeInitError() {
+		globeFailed = true;
+	}
+
 	$effect(() => {
-		const station = selectedStation;
+		selectedStation;
+		audioElement;
 
-		if (!station || !audioElement || lastAutoplayStationId === station.id) {
-			return;
-		}
-
-		lastAutoplayStationId = station.id;
-
-		void tick().then(async () => {
-			if (!audioElement || selectedStation?.id !== station.id) {
-				return;
-			}
-
-			audioElement.pause();
-			audioElement.currentTime = 0;
-			setPlaybackStatus('buffering');
-
-			try {
-				await audioElement.play();
-			} catch (error) {
-				setPlaybackStatus('error');
-				console.warn('Autoplay failed for selected station', error);
-			}
-		});
+		void prepareSelectedStationAudio(selectedStation);
 	});
 
 	$effect(() => {
@@ -484,50 +669,63 @@
 
 		syncUrlState();
 	});
+
+	$effect(() => {
+		if (!showLoadingOverlay || typeof window === 'undefined') {
+			return;
+		}
+
+		const intervalId = window.setInterval(() => {
+			loadingScrambleCycle += 1;
+		}, loadingScrambleLoopMs);
+
+		return () => {
+			window.clearInterval(intervalId);
+		};
+	});
 </script>
 
 <div class="page-shell">
 	<section class="stage">
-		{#if isLoading}
-			<div class="loading-card">
-				<p>
-					<ScrambleText
-						text="Loading live station coordinates…"
-						animateInitial={true}
-						speed="slow"
-					/>
-				</p>
-			</div>
-		{:else if error}
+		{#if shouldMountGlobe && !error}
+			<RadioGlobe
+				stations={visibleStations}
+				{selectedStation}
+				onselect={pickStation}
+				{apiResponseTime}
+				{dataAge}
+				apiError={error}
+				{query}
+				{country}
+				{isOnline}
+				{rawApiStats}
+				shouldAutoFocus={hasActiveFilters}
+				{focusKey}
+				favoriteFocusStation={selectedStation}
+				{favoriteFocusRequestId}
+				{playingStation}
+				{debugOpen}
+				onready={handleGlobeReady}
+				oniniterror={handleGlobeInitError}
+			/>
+		{/if}
+
+		{#if error}
 			<div class="loading-card error-card">
 				<p>{error}</p>
 			</div>
-		{:else if globeModule}
-			{#await globeModule then module}
-				{@const Globe = module.default}
-				<Globe
-					stations={visibleStations}
-					{selectedStation}
-					onselect={pickStation}
-					{apiResponseTime}
-					{dataAge}
-					apiError={error}
-					{query}
-					{country}
-					{isOnline}
-					{rawApiStats}
-					shouldAutoFocus={hasActiveFilters}
-					{focusKey}
-					favoriteFocusStation={selectedStation}
-					{favoriteFocusRequestId}
-					{playingStation}
-					{debugOpen}
-				/>
-			{:catch}
-				<div class="loading-card error-card">
-					<p>The 3D globe component could not be loaded.</p>
-				</div>
-			{/await}
+		{:else if showLoadingOverlay}
+			<div class="loading-card">
+				{#key loadingScrambleCycle}
+					<p class="loading-copy">
+						<ScrambleText
+							text="Loading live station coordinates…"
+							animateInitial={true}
+							speed="slow"
+						/>
+					</p>
+				{/key}
+			</div>
 		{/if}
 
 		<div class="hud hud-top">
@@ -781,13 +979,6 @@
 						</div>
 					{/if}
 
-					<audio
-						bind:this={audioElement}
-						class="hidden-audio"
-						preload="auto"
-						src={spotlight.streamUrl}
-					></audio>
-
 					<div class="meta-row">
 						<ScrambleText as="span" text={refreshedAt || '...'} />
 						<div class="link-row">
@@ -840,6 +1031,8 @@
 				</div>
 			{/if}
 		</div>
+
+		<audio bind:this={audioElement} class="hidden-audio" preload="auto"></audio>
 	</section>
 </div>
 
@@ -885,6 +1078,11 @@
 		z-index: 3;
 	}
 
+	.loading-copy {
+		animation: loading-fade 1.5s ease-in-out infinite;
+		will-change: opacity;
+	}
+
 	.error-card {
 		color: #ffd6dd;
 	}
@@ -905,7 +1103,7 @@
 	}
 
 	.hud-bottom {
-		bottom: 1rem;
+		bottom: 3rem;
 		max-width: min(32rem, calc(100vw - 2rem));
 	}
 
@@ -1445,7 +1643,7 @@
 		}
 
 		.hud-bottom {
-			bottom: 0.75rem;
+			bottom: calc(0.75rem + 50px);
 			max-width: calc(100vw - 1.5rem);
 		}
 
@@ -1561,6 +1759,16 @@
 		}
 		100% {
 			background-position: -120% 0;
+		}
+	}
+
+	@keyframes loading-fade {
+		0%,
+		100% {
+			opacity: 0.35;
+		}
+		50% {
+			opacity: 1;
 		}
 	}
 

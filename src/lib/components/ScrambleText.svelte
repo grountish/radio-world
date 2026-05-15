@@ -9,7 +9,13 @@
 		speed?: 'fast' | 'normal' | 'slow';
 	};
 
-	let { text = '', as = 'span', className = '', animateInitial = false, speed = 'normal' }: Props = $props();
+	let {
+		text = '',
+		as = 'span',
+		className = '',
+		animateInitial = false,
+		speed = 'normal'
+	}: Props = $props();
 
 	const glyphs = 'a*c_e1f·ij#l¢n$pq%s&u/w()=0^23456789:/-•.,';
 	const speedConfigs = {
@@ -18,7 +24,7 @@
 		slow: { extraFrames: 40, frameDurationMs: 16 }
 	};
 	const speedConfig = $derived(speedConfigs[speed]);
-	let displayText = $state(text);
+	let displayText = $state(animateInitial ? '' : text);
 	let initialized = false;
 	let reduceMotion = false;
 	let frameId = 0;
@@ -58,7 +64,9 @@
 				to,
 				locked,
 				start: locked ? 0 : Math.floor(Math.random() * 5),
-				end: locked ? 0 : 7 + Math.floor(Math.random() * 9) + index * 0.35 + speedConfig.extraFrames,
+				end: locked
+					? 0
+					: 7 + Math.floor(Math.random() * 9) + index * 0.35 + speedConfig.extraFrames,
 				glyph: from
 			};
 		});
