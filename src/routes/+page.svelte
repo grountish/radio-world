@@ -2,6 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import RadioGlobe from '$lib/components/RadioGlobe.svelte';
 	import ScrambleText from '$lib/components/ScrambleText.svelte';
+	import { APP_THEMES, DEFAULT_THEME_ID } from '$lib/config/app-theme';
 	import { VERSION_HISTORY } from '$lib/config/app-version';
 	import type { RadioStation, RadioStationPayload } from '$lib/types/radio';
 	import { buildRadioUrl, parseRadioUrlState } from '$lib/utils/radio-url';
@@ -39,6 +40,7 @@
 	let favoritesOpen = $state(false);
 	let debugOpen = $state(false);
 	let versionLogOpen = $state(false);
+	let themePanelOpen = $state(false);
 	let apiResponseTime = $state(0);
 	let isOnline = $state(true);
 	let rawApiStats = $state<any>(null);
@@ -50,6 +52,7 @@
 	let pendingUrlStationId = $state('');
 	let urlStateRevision = $state(0);
 	let urlSyncLocked = $state(true);
+	let selectedThemeId = $state(DEFAULT_THEME_ID);
 	const initialLoadingAnimationMs = 650;
 	const loadingScrambleLoopMs = 1300;
 	const hasActiveFilters = $derived(query.trim().length > 0 || country !== 'all' || hiQualityOnly);
@@ -57,6 +60,12 @@
 		`${query.trim().toLowerCase()}|${country}|${hiQualityOnly ? '1' : '0'}`
 	);
 	const showLoadingOverlay = $derived(!error && (isLoading || (!globeReady && !globeFailed)));
+	const selectedTheme = $derived(
+		APP_THEMES.find((theme) => theme.id === selectedThemeId) ?? APP_THEMES[0]
+	);
+	const themeCssVars = $derived(
+		`--accent: ${selectedTheme.accent}; --accent-rgb: ${selectedTheme.accentRgb};`
+	);
 
 	const dataAge = $derived.by(() => {
 		if (!stats?.updatedAt) return '';
@@ -154,6 +163,11 @@
 			} catch {
 				// ignore malformed storage
 			}
+		}
+
+		const savedThemeId = localStorage.getItem('radio-world-theme');
+		if (savedThemeId && APP_THEMES.some((theme) => theme.id === savedThemeId)) {
+			selectedThemeId = savedThemeId;
 		}
 
 		try {
@@ -282,6 +296,7 @@
 		if (favoritesOpen) {
 			debugOpen = false;
 			versionLogOpen = false;
+			themePanelOpen = false;
 		}
 	}
 
@@ -290,6 +305,7 @@
 		if (debugOpen) {
 			favoritesOpen = false;
 			versionLogOpen = false;
+			themePanelOpen = false;
 		}
 	}
 
@@ -298,7 +314,22 @@
 		if (versionLogOpen) {
 			favoritesOpen = false;
 			debugOpen = false;
+			themePanelOpen = false;
 		}
+	}
+
+	function toggleThemePanel() {
+		themePanelOpen = !themePanelOpen;
+		if (themePanelOpen) {
+			favoritesOpen = false;
+			debugOpen = false;
+			versionLogOpen = false;
+		}
+	}
+
+	function selectTheme(themeId: string) {
+		selectedThemeId = themeId;
+		themePanelOpen = false;
 	}
 
 	function clearFilters() {
@@ -695,9 +726,17 @@
 			window.clearInterval(intervalId);
 		};
 	});
+
+	$effect(() => {
+		if (typeof window === 'undefined') {
+			return;
+		}
+
+		localStorage.setItem('radio-world-theme', selectedThemeId);
+	});
 </script>
 
-<div class="page-shell">
+<div class="page-shell" style={themeCssVars}>
 	<section class="stage">
 		{#if shouldMountGlobe && !error}
 			<RadioGlobe
@@ -717,6 +756,7 @@
 				{favoriteFocusRequestId}
 				{playingStation}
 				{debugOpen}
+				themeAccent={selectedTheme.accent}
 				onready={handleGlobeReady}
 				oniniterror={handleGlobeInitError}
 			/>
@@ -803,6 +843,20 @@
 				>
 					<span aria-hidden="true">◷</span>
 				</button>
+				<button
+					type="button"
+					class="fav-toggle icon-toggle-button theme-toggle-button"
+					class:active={themePanelOpen}
+					onclick={toggleThemePanel}
+					aria-label={themePanelOpen ? 'Collapse theme panel' : 'Expand theme panel'}
+					title="Theme"
+				>
+					<span
+						class="theme-toggle-swatch"
+						aria-hidden="true"
+						style={`--theme-swatch: ${selectedTheme.accent};`}
+					></span>
+				</button>
 			</div>
 			{#if favoritesOpen}
 				<div class="fav-list">
@@ -816,6 +870,26 @@
 							</button>
 						{/each}
 					{/if}
+				</div>
+			{/if}
+			{#if themePanelOpen}
+				<div class="theme-panel">
+					{#each APP_THEMES as theme (theme.id)}
+						<button
+							type="button"
+							class="theme-swatch-button"
+							class:active={selectedThemeId === theme.id}
+							onclick={() => selectTheme(theme.id)}
+							aria-label={`Switch to ${theme.name} theme`}
+							title={theme.name}
+						>
+							<span
+								class="theme-swatch"
+								aria-hidden="true"
+								style={`--theme-swatch: ${theme.accent};`}
+							></span>
+						</button>
+					{/each}
 				</div>
 			{/if}
 			{#if versionLogOpen}
@@ -1105,7 +1179,9 @@
 		--panel-bg: rgba(0, 0, 0, 0.54);
 		--text-soft: rgba(255, 255, 255);
 		--ink: #ffffff;
-		--orange: #f18c34;
+		--accent: #f18c34;
+		--accent-rgb: 241, 140, 52;
+		--orange: var(--accent);
 		height: 100dvh;
 	}
 
@@ -1219,7 +1295,7 @@
 	}
 
 	.filter-toggle.active {
-		background: rgba(241, 140, 52, 0.15);
+		background: rgba(var(--accent-rgb), 0.15);
 		color: var(--orange);
 	}
 
@@ -1275,13 +1351,17 @@
 		width: 2.2rem;
 		height: 2.2rem;
 		border-radius: 0;
-		background: linear-gradient(135deg, rgba(241, 140, 52, 0.2), rgba(241, 140, 52, 0.1));
-		border: 1px solid rgba(241, 140, 52, 0.3);
+		background: linear-gradient(
+			135deg,
+			rgba(var(--accent-rgb), 0.2),
+			rgba(var(--accent-rgb), 0.1)
+		);
+		border: 1px solid rgba(var(--accent-rgb), 0.3);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		flex-shrink: 0;
-		color: rgba(241, 140, 52, 0.8);
+		color: rgba(var(--accent-rgb), 0.8);
 		font-size: 0.9rem;
 		line-height: 1;
 	}
@@ -1506,7 +1586,7 @@
 		inset: 0;
 		width: 0;
 		border-radius: 0;
-		background: rgba(241, 140, 52, 0.5);
+		background: rgba(var(--accent-rgb), 0.5);
 		transition:
 			width 180ms ease,
 			background-color 180ms ease,
@@ -1519,11 +1599,11 @@
 		opacity: 0.95;
 		background: linear-gradient(
 			90deg,
-			rgba(241, 140, 52, 0.08) 0%,
-			rgba(241, 140, 52, 0.24) 30%,
+			rgba(var(--accent-rgb), 0.08) 0%,
+			rgba(var(--accent-rgb), 0.24) 30%,
 			rgba(255, 217, 166, 0.9) 50%,
-			rgba(241, 140, 52, 0.24) 70%,
-			rgba(241, 140, 52, 0.08) 100%
+			rgba(var(--accent-rgb), 0.24) 70%,
+			rgba(var(--accent-rgb), 0.08) 100%
 		);
 		background-size: 220% 100%;
 		background-position: 100% 0;
@@ -1547,7 +1627,7 @@
 		border: 0;
 		background: transparent;
 		appearance: none;
-		accent-color: #f18c34;
+		accent-color: var(--accent);
 	}
 
 	.volume-slider::-webkit-slider-runnable-track {
@@ -1846,6 +1926,55 @@
 		text-align: center;
 	}
 
+	.theme-toggle-button {
+		padding-inline: 0.4rem;
+	}
+
+	.theme-toggle-swatch,
+	.theme-swatch {
+		display: inline-block;
+		width: 0.78rem;
+		margin-top: 5px;
+		height: 0.78rem;
+		border-radius: 999px;
+		background: var(--theme-swatch);
+	}
+
+	.theme-panel {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 0.4rem;
+		margin-top: 0.3rem;
+		padding: 0.5rem 0.65rem;
+		background: var(--panel-bg);
+		backdrop-filter: blur(10px);
+	}
+
+	.theme-swatch-button {
+		border: 0;
+		padding: 0.25rem;
+		background: transparent;
+		cursor: pointer;
+		line-height: 0;
+		border-radius: 999px;
+		outline: 1px solid transparent;
+		outline-offset: 2px;
+		transition:
+			outline-color 0.12s ease,
+			transform 0.12s ease;
+	}
+
+	.theme-swatch-button:hover,
+	.theme-swatch-button.active {
+		outline-color: rgba(var(--accent-rgb), 0.75);
+		transform: scale(1.05);
+	}
+
+	.theme-swatch-button.active .theme-swatch {
+		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+	}
+
 	.fav-list {
 		background: var(--panel-bg);
 		backdrop-filter: blur(10px);
@@ -1880,7 +2009,7 @@
 	}
 
 	.fav-item:hover {
-		background: rgba(241, 140, 52, 0.1);
+		background: rgba(var(--accent-rgb), 0.1);
 	}
 
 	.fav-name {
@@ -1965,6 +2094,7 @@
 		}
 
 		.fav-list,
+		.theme-panel,
 		.version-log-panel {
 			width: min(24rem, calc(100vw - 1.5rem));
 		}

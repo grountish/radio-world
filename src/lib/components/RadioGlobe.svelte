@@ -29,6 +29,7 @@
 		favoriteFocusRequestId?: number;
 		playingStation?: RadioStation | null;
 		debugOpen?: boolean;
+		themeAccent?: string;
 	};
 
 	let {
@@ -50,7 +51,8 @@
 		favoriteFocusStation = null,
 		favoriteFocusRequestId = 0,
 		playingStation = null,
-		debugOpen = false
+		debugOpen = false,
+		themeAccent = '#f18c34'
 	}: Props = $props();
 
 	let container: HTMLDivElement;
@@ -59,9 +61,9 @@
 
 	const radius = 1.35;
 	const clusterGridDegrees = 0.2;
-	const baseColor = new THREE.Color('#f18c34');
-	const hoverColor = new THREE.Color('#ffd9a6');
-	const selectedColor = new THREE.Color('#ff6b1a');
+	const baseColor = new THREE.Color(themeAccent);
+	const hoverColor = new THREE.Color(themeAccent);
+	const selectedColor = new THREE.Color(themeAccent);
 	const pointer = new THREE.Vector2();
 	const raycaster = new THREE.Raycaster();
 	const dummy = new THREE.Object3D();
@@ -116,11 +118,36 @@
 	let playingPulseMesh: THREE.Mesh | null = null;
 	let playingPulsePosition: THREE.Vector3 | null = null;
 	let playingPulseMarkerScale = 0;
+	let atmosphereMaterial: THREE.MeshBasicMaterial | null = null;
+	let rimLight: THREE.DirectionalLight | null = null;
+
+	function applyThemeAccent() {
+		const accent = new THREE.Color(themeAccent);
+		baseColor.copy(accent);
+		hoverColor.copy(accent).lerp(new THREE.Color('#ffffff'), 0.45);
+		selectedColor.copy(accent).lerp(new THREE.Color('#000000'), 0.2);
+
+		if (atmosphereMaterial) {
+			atmosphereMaterial.color.copy(accent);
+		}
+
+		if (rimLight) {
+			rimLight.color.copy(accent);
+		}
+
+		if (playingPulseMesh?.material instanceof THREE.MeshBasicMaterial) {
+			playingPulseMesh.material.color.copy(hoverColor);
+		}
+
+		if (sceneReady) {
+			updateMarkerColors();
+		}
+	}
 
 	function createPlayingPulse() {
 		const geometry = new THREE.SphereGeometry(0.018, 24, 24);
 		const material = new THREE.MeshBasicMaterial({
-			color: '#ffd9a6',
+			color: hoverColor.clone(),
 			transparent: true,
 			opacity: 0,
 			depthWrite: false,
@@ -922,14 +949,15 @@
 			);
 			earthGroup.add(earth);
 
+			atmosphereMaterial = new THREE.MeshBasicMaterial({
+				color: themeAccent,
+				transparent: true,
+				opacity: 0.02,
+				side: THREE.BackSide
+			});
 			const atmosphere = new THREE.Mesh(
 				new THREE.SphereGeometry(radius * 1.04, 64, 64),
-				new THREE.MeshBasicMaterial({
-					color: '#f18c34',
-					transparent: true,
-					opacity: 0.02,
-					side: THREE.BackSide
-				})
+				atmosphereMaterial
 			);
 			earthGroup.add(atmosphere);
 			earthGroup.add(createCountryBorders());
@@ -943,7 +971,7 @@
 			keyLight.position.set(4, 3, 6);
 			scene.add(keyLight);
 
-			const rimLight = new THREE.DirectionalLight('#f18c34', 0.18);
+			rimLight = new THREE.DirectionalLight(themeAccent, 0.18);
 			rimLight.position.set(-4, -2, -6);
 			scene.add(rimLight);
 
@@ -957,6 +985,7 @@
 			container.addEventListener('contextmenu', handleContextMenu);
 			updateRendererSize();
 			rebuildMarkers();
+			applyThemeAccent();
 			sceneReady = true;
 			onready?.();
 			animate();
@@ -993,6 +1022,11 @@
 
 	$effect(() => {
 		updateMarkerColors();
+	});
+
+	$effect(() => {
+		themeAccent;
+		applyThemeAccent();
 	});
 
 	$effect(() => {
@@ -1217,13 +1251,13 @@
 	}
 
 	.is-sticky .cluster-header {
-		border-left: 2px solid #f18c34;
+		border-left: 2px solid var(--accent, #f18c34);
 		padding-left: calc(0.9rem - 2px);
 	}
 
 	.cluster-label {
 		margin: 0;
-		color: #f18c34;
+		color: var(--accent, #f18c34);
 		font-size: 0.64rem;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -1242,7 +1276,7 @@
 	}
 
 	.cluster-close:hover {
-		color: #f18c34;
+		color: var(--accent, #f18c34);
 	}
 
 	.cluster-list {
@@ -1251,7 +1285,7 @@
 		list-style: none;
 		overflow-y: auto;
 		scrollbar-width: thin;
-		scrollbar-color: rgba(241, 140, 52, 0.3) transparent;
+		scrollbar-color: rgba(var(--accent-rgb, 241, 140, 52), 0.3) transparent;
 	}
 
 	.cluster-item {
@@ -1271,7 +1305,7 @@
 	}
 
 	.cluster-item:hover {
-		background: rgba(241, 140, 52, 0.12);
+		background: rgba(var(--accent-rgb, 241, 140, 52), 0.12);
 	}
 
 	.cluster-item:last-child {
@@ -1311,7 +1345,7 @@
 		right: 1rem;
 		background: rgba(0, 0, 0, 0.75);
 		backdrop-filter: blur(10px);
-		border: 1px solid rgba(241, 140, 52, 0.3);
+		border: 1px solid rgba(var(--accent-rgb, 241, 140, 52), 0.3);
 		border-radius: 2px;
 		z-index: 10;
 		pointer-events: auto;
@@ -1337,7 +1371,7 @@
 	}
 
 	.debug-value {
-		color: #f18c34;
+		color: var(--accent, #f18c34);
 		font-weight: 500;
 		text-align: right;
 		min-width: 4rem;
@@ -1347,8 +1381,8 @@
 		margin-top: 0.6rem;
 		margin-bottom: 0.3rem;
 		padding-top: 0.4rem;
-		border-top: 1px solid rgba(241, 140, 52, 0.2);
-		color: rgba(241, 140, 52, 0.8);
+		border-top: 1px solid rgba(var(--accent-rgb, 241, 140, 52), 0.2);
+		color: rgba(var(--accent-rgb, 241, 140, 52), 0.8);
 		font-size: 0.55rem;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;

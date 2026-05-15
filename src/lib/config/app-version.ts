@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.8';
+export const APP_VERSION = '0.0.9';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,17 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.8',
+		version: '0.0.9',
 		label: 'current',
+		fixes: [
+			'added a theme picker with five accent swatches in the top-right control row',
+			'replaced the fixed orange accent with a shared theme color across the HUD and globe',
+			'persisted the selected theme so it survives reloads'
+		]
+	},
+	{
+		version: '0.0.8',
+		label: 'previous',
 		fixes: [
 			'kept the top mobile search bar clear by moving favorites, stats, and version controls below it',
 			'let the mobile filter row use the full viewport width again',
