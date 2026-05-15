@@ -55,6 +55,7 @@
 	let selectedThemeId = $state(DEFAULT_THEME_ID);
 	let currentTrackArtist = $state('');
 	let currentTrackTitle = $state('');
+	let meltActive = $state(false);
 	const initialLoadingAnimationMs = 650;
 	const loadingScrambleLoopMs = 1300;
 	const hasActiveFilters = $derived(query.trim().length > 0 || country !== 'all' || hiQualityOnly);
@@ -338,6 +339,10 @@
 		query = '';
 		country = 'all';
 		hiQualityOnly = false;
+	}
+
+	function toggleMelt() {
+		meltActive = !meltActive;
 	}
 
 	function getStationInitials(name: string): string {
@@ -840,6 +845,7 @@
 				{playingStation}
 				{debugOpen}
 				themeAccent={selectedTheme.accent}
+				{meltActive}
 				onready={handleGlobeReady}
 				oniniterror={handleGlobeInitError}
 			/>
@@ -939,6 +945,16 @@
 						aria-hidden="true"
 						style={`--theme-swatch: ${selectedTheme.accent};`}
 					></span>
+				</button>
+				<button
+					type="button"
+					class="fav-toggle icon-toggle-button"
+					class:active={meltActive}
+					onclick={toggleMelt}
+					aria-label={meltActive ? 'Disable melt mode' : 'Enable melt mode'}
+					title="Melt"
+				>
+					<span aria-hidden="true">≋</span>
 				</button>
 			</div>
 			{#if favoritesOpen}

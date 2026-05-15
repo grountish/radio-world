@@ -30,6 +30,7 @@
 		playingStation?: RadioStation | null;
 		debugOpen?: boolean;
 		themeAccent?: string;
+		meltActive?: boolean;
 	};
 
 	let {
@@ -52,7 +53,8 @@
 		favoriteFocusRequestId = 0,
 		playingStation = null,
 		debugOpen = false,
-		themeAccent = '#f18c34'
+		themeAccent = '#f18c34',
+		meltActive = false
 	}: Props = $props();
 
 	let container: HTMLDivElement;
@@ -120,6 +122,9 @@
 	let playingPulseMarkerScale = 0;
 	let atmosphereMaterial: THREE.MeshBasicMaterial | null = null;
 	let rimLight: THREE.DirectionalLight | null = null;
+	let bordersGroup: THREE.Group | null = null;
+	let meltBordersGroup: THREE.Group | null = null;
+	let meltMaterial: THREE.ShaderMaterial | null = null;
 
 	function applyThemeAccent() {
 		const accent = new THREE.Color(themeAccent);
@@ -369,6 +374,51 @@
 					group.add(
 						new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), coastMaterial)
 					);
+				}
+			}
+		}
+
+		return group;
+	}
+
+	function createMeltBorders() {
+		const group = new THREE.Group();
+		const atlas = countriesAtlas as {
+			objects: { countries: object; land: object };
+		};
+
+		// Country borders
+		const countryBorders = mesh(
+			atlas as never,
+			atlas.objects.countries as never,
+			(left, right) => left !== right
+		);
+
+		if (countryBorders.type === 'MultiLineString') {
+			for (const lineString of countryBorders.coordinates) {
+				const points: THREE.Vector3[] = [];
+				for (const [lon, lat] of lineString) {
+					const point = latLonToCartesian(lat, lon, radius + 0.008, 0);
+					points.push(new THREE.Vector3(point.x, point.y, point.z));
+				}
+				if (points.length > 1) {
+					group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), meltMaterial!));
+				}
+			}
+		}
+
+		// Coastlines
+		const coastlines = mesh(atlas as never, atlas.objects.land as never);
+
+		if (coastlines.type === 'MultiLineString') {
+			for (const lineString of coastlines.coordinates) {
+				const points: THREE.Vector3[] = [];
+				for (const [lon, lat] of lineString) {
+					const point = latLonToCartesian(lat, lon, radius + 0.008, 0);
+					points.push(new THREE.Vector3(point.x, point.y, point.z));
+				}
+				if (points.length > 1) {
+					group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), meltMaterial!));
 				}
 			}
 		}
@@ -904,6 +954,10 @@
 			}
 		}
 
+		if (meltMaterial && meltActive) {
+			meltMaterial.uniforms.uTime.value = now * 0.001;
+		}
+
 		renderer.render(scene, camera);
 	}
 
@@ -960,7 +1014,8 @@
 				atmosphereMaterial
 			);
 			earthGroup.add(atmosphere);
-			earthGroup.add(createCountryBorders());
+			bordersGroup = createCountryBorders();
+			earthGroup.add(bordersGroup);
 			earthGroup.add(createLatLonGrid());
 			playingPulseMesh = createPlayingPulse();
 			earthGroup.add(playingPulseMesh);
@@ -1072,6 +1127,55 @@
 				favoriteFocusDistance
 			)
 		);
+	});
+
+	$effect(() => {
+		if (!earthGroup || !bordersGroup) return;
+
+		if (meltActive) {
+			if (!meltBordersGroup) {
+				meltMaterial = new THREE.ShaderMaterial({
+					uniforms: { uTime: { value: 0 } },
+					vertexShader: `
+						uniform float uTime;
+						varying vec3 vPos;
+
+						void main() {
+							vPos = position;
+							float d =
+								sin(position.x * 8.0  + uTime * 0.9) * 0.018 +
+								sin(position.y * 11.0 + uTime * 1.2) * 0.014 +
+								sin(position.z * 7.0  + uTime * 0.6) * 0.016 +
+								sin((position.x + position.z) * 14.0 + uTime * 1.6) * 0.010;
+							vec3 displaced = position + normalize(position) * d;
+							gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+						}
+					`,
+					fragmentShader: `
+						uniform float uTime;
+						varying vec3 vPos;
+
+						void main() {
+							vec3 a = vec3(0.5, 0.5, 0.5);
+							vec3 b = vec3(0.5, 0.5, 0.5);
+							vec3 c = vec3(1.0, 0.7, 0.4);
+							vec3 d = vec3(0.00, 0.15, 0.20);
+							float t = uTime * 0.22 + length(vPos) * 1.8;
+							vec3 col = a + b * cos(6.28318 * (c * t + d));
+							gl_FragColor = vec4(col, 0.9);
+						}
+					`,
+					transparent: true
+				});
+				meltBordersGroup = createMeltBorders();
+				earthGroup.add(meltBordersGroup);
+			}
+			bordersGroup.visible = false;
+			meltBordersGroup.visible = true;
+		} else {
+			bordersGroup.visible = true;
+			if (meltBordersGroup) meltBordersGroup.visible = false;
+		}
 	});
 </script>
 

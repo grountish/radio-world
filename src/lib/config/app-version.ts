@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.15';
+export const APP_VERSION = '0.0.16';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,17 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.15',
+		version: '0.0.16',
 		label: 'current',
+		fixes: [
+			'added experimental melt mode with psychedelic shader that distorts country borders in real-time',
+			'borders melt using layered sine waves at different frequencies for organic motion',
+			'fragment shader cycles through vibrant colors using cosine palette formula and spatial position'
+		]
+	},
+	{
+		version: '0.0.15',
+		label: 'previous',
 		fixes: [
 			'added pinned search results panel at bottom-right that auto-shows when filtering',
 			'search panel automatically closes other panels (favorites, stats, etc.) when active',
