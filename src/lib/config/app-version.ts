@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.17';
+export const APP_VERSION = '0.0.18';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,17 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.17',
+		version: '0.0.18',
 		label: 'current',
+		fixes: [
+			'prefer https stream, homepage, and favicon urls over http during station normalization',
+			'upgrade stale insecure stream urls on the client before playback to avoid mixed-content warnings on the deployed https app',
+			'point the Stream link in the station panel at the secure url too'
+		]
+	},
+	{
+		version: '0.0.17',
+		label: 'previous',
 		fixes: [
 			'polished melt mode: globe auto-rotates and camera zooms out for full view',
 			'added echo/ghost effect with time-offset distortion creating shimmering trails',

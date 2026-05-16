@@ -39,6 +39,26 @@ describe('normalizeStation', () => {
 		});
 	});
 
+	it('upgrades station urls to https when the source uses http', () => {
+		const station = normalizeStation({
+			stationuuid: 'secure-upgrade',
+			name: 'Secure Upgrade',
+			homepage: 'http://example.com',
+			favicon: 'http://example.com/icon.png',
+			url_resolved: 'http://stream.example.com/live',
+			geo_lat: '48.8566',
+			geo_long: '2.3522'
+		});
+
+		expect(station).toEqual(
+			expect.objectContaining({
+				homepage: 'https://example.com/',
+				favicon: 'https://example.com/icon.png',
+				streamUrl: 'https://stream.example.com/live'
+			})
+		);
+	});
+
 	it('drops stations without a valid stream or coordinates', () => {
 		expect(
 			normalizeStation({

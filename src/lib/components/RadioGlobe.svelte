@@ -403,7 +403,9 @@
 					points.push(new THREE.Vector3(point.x, point.y, point.z));
 				}
 				if (points.length > 1) {
-					group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), meltMaterial!));
+					group.add(
+						new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), meltMaterial!)
+					);
 				}
 			}
 		}
@@ -419,7 +421,9 @@
 					points.push(new THREE.Vector3(point.x, point.y, point.z));
 				}
 				if (points.length > 1) {
-					group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), meltMaterial!));
+					group.add(
+						new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), meltMaterial!)
+					);
 				}
 			}
 		}
@@ -1136,7 +1140,6 @@
 		);
 	});
 
-
 	$effect(() => {
 		if (!earthGroup || !bordersGroup) return;
 
@@ -1150,6 +1153,7 @@
 			if (!meltBordersGroup) {
 				meltMaterial = new THREE.ShaderMaterial({
 					uniforms: { uTime: { value: 0 } },
+
 					vertexShader: `
 						uniform float uTime;
 						varying vec3 vPos;
@@ -1162,12 +1166,12 @@
 
 							// Main distortion with high-frequency waves
 							float d =
-								sin(position.x * 12.0 + uTime * 1.5) * 0.025 +
-								sin(position.y * 15.0 + uTime * 2.0) * 0.022 +
-								sin(position.z * 10.0 + uTime * 1.2) * 0.025 +
-								sin((position.x + position.y) * 20.0 + uTime * 1.8) * 0.018 +
-								sin((position.y + position.z) * 18.0 + uTime * 1.4) * 0.018 +
-								sin((position.x + position.z) * 22.0 + uTime * 1.6) * 0.018 +
+								sin(position.x * 12.0 + uTime * 3.5) * 0.055 +
+								sin(position.y * 15.0 + uTime * 4.0) * 0.062 +
+								sin(position.z * 10.0 + uTime * 1.2) * 0.085 +
+								sin((position.x + position.y) * 20.0 + uTime * 3.8) * 0.018 +
+								sin((position.y + position.z) * 18.0 + uTime * 5.4) * 0.018 +
+								sin((position.x + position.z) * 22.0 + uTime * 2.6) * 0.018 +
 								sin((position.x * 2.0 + position.y) * 28.0 + uTime * 2.2) * 0.015 +
 								sin((position.y * 2.0 + position.z) * 26.0 + uTime * 1.9) * 0.015 +
 								sin((position.x * 3.0 + position.z) * 32.0 + uTime * 2.4) * 0.012 +
@@ -1177,10 +1181,10 @@
 
 							// Echo/ghost with time offset - different frequency creates interference
 							float dEcho =
-								sin(position.x * 12.0 + (uTime - 0.3) * 1.5) * 0.020 +
-								sin(position.y * 15.0 + (uTime - 0.3) * 2.0) * 0.020 +
-								sin(position.z * 10.0 + (uTime - 0.3) * 1.2) * 0.020 +
-								sin((position.x + position.y) * 20.0 + (uTime - 0.3) * 1.8) * 0.015;
+								sin(position.x * 12.0 + (uTime - 0.3) * 1.5) * 0.520 +
+								sin(position.y * 15.0 + (uTime - 0.3) * 2.0) * 0.220 +
+								sin(position.z * 10.0 + (uTime - 0.3) * 1.2) * 0.420 +
+								sin((position.x + position.y) * 6.0 + (uTime - 0.3) * 1.8) * 0.015;
 							vEcho = dEcho;
 
 							// Add echo on top of main distortion - creates visible interference pattern

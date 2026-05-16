@@ -6,6 +6,7 @@
 	import { VERSION_HISTORY } from '$lib/config/app-version';
 	import type { RadioStation, RadioStationPayload } from '$lib/types/radio';
 	import { buildRadioUrl, parseRadioUrlState } from '$lib/utils/radio-url';
+	import { preferSecureUrl } from '$lib/utils/url-security';
 
 	type HlsClass = typeof import('hls.js').default;
 	type HlsInstance = import('hls.js').default;
@@ -69,6 +70,13 @@
 	const themeCssVars = $derived(
 		`--accent: ${selectedTheme.accent}; --accent-rgb: ${selectedTheme.accentRgb};`
 	);
+	const spotlightStreamUrl = $derived.by(() => {
+		if (!spotlight) {
+			return '';
+		}
+
+		return preferSecureUrl(spotlight.streamUrl);
+	});
 
 	const dataAge = $derived.by(() => {
 		if (!stats?.updatedAt) return '';
@@ -408,6 +416,10 @@
 		return /\.m3u8($|[?#])/i.test(streamUrl);
 	}
 
+	function getPlayableStreamUrl(streamUrl: string) {
+		return preferSecureUrl(streamUrl);
+	}
+
 	function destroyHlsPlayer() {
 		if (!hlsPlayer) {
 			return;
@@ -529,7 +541,8 @@
 				return false;
 			}
 
-			if (loadedStationId === station.id && loadedStreamUrl === station.streamUrl) {
+			const nextStreamUrl = getPlayableStreamUrl(station.streamUrl);
+			if (loadedStationId === station.id && loadedStreamUrl === nextStreamUrl) {
 				return true;
 			}
 
@@ -537,16 +550,16 @@
 			destroyHlsPlayer();
 			audioElement.removeAttribute('src');
 
-			if (isHlsStreamUrl(station.streamUrl)) {
-				await attachHlsStream(station.streamUrl);
+			if (isHlsStreamUrl(nextStreamUrl)) {
+				await attachHlsStream(nextStreamUrl);
 			} else {
-				audioElement.src = station.streamUrl;
+				audioElement.src = nextStreamUrl;
 				audioElement.load();
 			}
 
 			audioElement.currentTime = 0;
 			loadedStationId = station.id;
-			loadedStreamUrl = station.streamUrl;
+			loadedStreamUrl = nextStreamUrl;
 			elapsed = 0;
 			isPlaying = false;
 			return true;
@@ -1229,7 +1242,7 @@
 								<a href={spotlight.homepage} target="_blank" rel="noreferrer">Site</a>
 							{/if}
 							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-							<a href={spotlight.streamUrl} target="_blank" rel="noreferrer">Stream</a>
+							<a href={spotlightStreamUrl} target="_blank" rel="noreferrer">Stream</a>
 							{#if stats}
 								<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 								<a href={stats.source} target="_blank" rel="noreferrer">Source</a>
@@ -1473,7 +1486,7 @@
 		align-items: center;
 	}
 
-	.station-name {
+	:global(.station-name) {
 		margin: 0;
 		font-size: 1rem;
 		line-height: 1.2;
@@ -1482,8 +1495,8 @@
 		text-transform: lowercase;
 	}
 
-	.station-subtitle,
-	.coordinates {
+	:global(.station-subtitle),
+	:global(.coordinates) {
 		margin: 0.35rem 0 0;
 		line-height: 1.5;
 		color: var(--text-soft);
@@ -1553,8 +1566,8 @@
 	}
 
 	.compact-station-row,
-	.compact-station-name,
-	.compact-station-subtitle,
+	:global(.compact-station-name),
+	:global(.compact-station-subtitle),
 	.compact-player-panel,
 	.compact-player-controls,
 	.compact-fav-button {
@@ -1588,8 +1601,7 @@
 		display: none;
 	}
 
-	.player-button,
-	.icon-button {
+	.player-button {
 		border: 0;
 		background: none;
 		color: var(--ink);
@@ -1683,65 +1695,12 @@
 		font-size: 0.68rem;
 	}
 
-	.icon-button {
-		position: relative;
-		width: 1.8rem;
-		height: 1.8rem;
-		border-radius: 0;
-		background: transparent;
-	}
-
-	.volume-on,
-	.volume-off {
-		position: relative;
-		display: inline-block;
-		width: 1rem;
-		height: 1rem;
-	}
-
-	.volume-on::before,
-	.volume-off::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 0.28rem;
-		width: 0.36rem;
-		height: 0.44rem;
-		border-radius: 0.08rem;
-		background: currentColor;
-	}
 	.filter-toggle-content {
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		gap: 0.5rem;
 		font-size: 0.82rem;
-	}
-
-	.volume-on::after,
-	.volume-off::after {
-		content: '';
-		position: absolute;
-		left: 0.28rem;
-		top: 0.14rem;
-		width: 0.42rem;
-		height: 0.42rem;
-		border: 0.14rem solid currentColor;
-		border-left-color: transparent;
-		border-bottom-color: transparent;
-		transform: rotate(45deg);
-		border-radius: 0.08rem;
-	}
-
-	.volume-off::after {
-		border: 0;
-		width: 0.64rem;
-		height: 0.12rem;
-		top: 0.46rem;
-		left: 0.28rem;
-		background: currentColor;
-		transform: rotate(-45deg);
-		border-radius: 999px;
 	}
 
 	.progress-rail {
@@ -1970,7 +1929,7 @@
 			gap: 0.35rem;
 		}
 
-		.coordinates {
+		:global(.coordinates) {
 			display: none;
 		}
 
@@ -1997,7 +1956,7 @@
 			align-items: center;
 		}
 
-		.compact-station-name {
+		:global(.compact-station-name) {
 			display: block;
 			min-width: 0;
 			margin: 0;
@@ -2008,7 +1967,7 @@
 			text-overflow: ellipsis;
 		}
 
-		.compact-station-subtitle {
+		:global(.compact-station-subtitle) {
 			display: block;
 			margin: 0;
 			font-size: 0.62rem;

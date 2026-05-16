@@ -15,13 +15,13 @@ export const APP_THEMES: AppTheme[] = [
 	{
 		id: 'cyan',
 		name: 'Cyan',
-		accent: '#4fc4ff',
+		accent: '#27f1ff',
 		accentRgb: '79, 196, 255'
 	},
 	{
 		id: 'lime',
 		name: 'Lime',
-		accent: '#a8dc52',
+		accent: '#73ff00',
 		accentRgb: '168, 220, 82'
 	},
 	{
@@ -33,7 +33,7 @@ export const APP_THEMES: AppTheme[] = [
 	{
 		id: 'violet',
 		name: 'Violet',
-		accent: '#a67cff',
+		accent: '#ff0073',
 		accentRgb: '166, 124, 255'
 	}
 ];

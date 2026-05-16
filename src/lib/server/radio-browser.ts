@@ -1,6 +1,7 @@
 import { APP_USER_AGENT } from '$lib/config/app-version';
 import type { RadioStation } from '$lib/types/radio';
 import { getCuratedStations } from '$lib/server/curated-stations';
+import { preferSecureUrl } from '$lib/utils/url-security';
 
 const RADIO_BROWSER_ENDPOINT = 'https://de1.api.radio-browser.info/json/stations/search';
 const CURATED_SOURCES_LABEL = 'curated: nts.live';
@@ -86,7 +87,7 @@ function safeUrl(value: unknown): string {
 
 	try {
 		const url = new URL(input);
-		return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : '';
+		return url.protocol === 'http:' || url.protocol === 'https:' ? preferSecureUrl(url.toString()) : '';
 	} catch {
 		return '';
 	}
