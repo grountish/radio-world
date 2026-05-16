@@ -381,6 +381,12 @@
 		}
 	}
 
+	function handleMobileContextMenu(event: MouseEvent) {
+		if (typeof window !== 'undefined' && window.innerWidth < 672) {
+			event.preventDefault();
+		}
+	}
+
 	function toggleMelt() {
 		meltActive = !meltActive;
 	}
@@ -874,7 +880,7 @@
 	});
 </script>
 
-<div class="page-shell" style={themeCssVars}>
+<div class="page-shell" style={themeCssVars} oncontextmenu={handleMobileContextMenu}>
 	<section class="stage">
 		{#if shouldMountGlobe && !error}
 			<RadioGlobe
@@ -1380,6 +1386,7 @@
 		--accent-rgb: 241, 140, 52;
 		--orange: var(--accent);
 		height: 100dvh;
+		-webkit-touch-callout: none;
 	}
 
 	.stage {
@@ -1449,6 +1456,8 @@
 	.spotlight-meta,
 	.empty-copy {
 		pointer-events: auto;
+		-webkit-user-select: none;
+		user-select: none;
 	}
 
 	.filter-row {
@@ -1535,6 +1544,8 @@
 		box-shadow: none;
 		appearance: none;
 		-webkit-appearance: none;
+		-webkit-user-select: text;
+		user-select: text;
 	}
 
 	input:not([type='range'])::placeholder {
@@ -2011,13 +2022,22 @@
 			right: 0.75rem;
 		}
 
+		.debug-toggle-button {
+			display: none;
+		}
+
+		input.search-input {
+			font-size: 16px;
+			line-height: 1.2;
+		}
+
 		.hud-top {
 			top: 0.75rem;
 			max-width: calc(100vw - 1.5rem);
 		}
 
 		.hud-bottom {
-			bottom: calc(0.75rem + 50px);
+			bottom: calc(0.75rem);
 			max-width: calc(100vw - 1.5rem);
 		}
 

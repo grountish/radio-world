@@ -70,6 +70,7 @@
 	const raycaster = new THREE.Raycaster();
 	const dummy = new THREE.Object3D();
 	const clickMovementThreshold = 8;
+	const mobileLongPressMs = 1000;
 	const globeCenter = new THREE.Vector3(0, 0, 0);
 	const defaultCameraPosition = new THREE.Vector3(0, 0.2, 4.9);
 	const markerAltitude = 0.04;
@@ -112,6 +113,8 @@
 	let pointerIsActive = false;
 	let lastPointerUpTime = 0;
 	let suppressCanvasSelectionUntil = 0;
+	let longPressTimeoutId = 0;
+	let longPressTriggered = false;
 	let animationFrame = 0;
 	let resizeObserver: ResizeObserver | null = null;
 	let sceneReady = $state(false);
@@ -189,9 +192,16 @@
 		}
 
 		const isMobile = window.innerWidth < 672;
-		controls.rotateSpeed = isMobile
-			? 0.07 + 0.33 * currentNormalizedZoom
-			: 0.04 + 0.34 * currentNormalizedZoom;
+
+		if (isMobile) {
+			// On touch screens, keep close-up dragging much less sensitive and only ramp up
+			// meaningfully as the camera pulls back out from the globe.
+			const mobileZoomCurve = Math.pow(currentNormalizedZoom, 1.7);
+			controls.rotateSpeed = 0.018 + 0.2 * mobileZoomCurve;
+			return;
+		}
+
+		controls.rotateSpeed = 0.04 + 0.34 * currentNormalizedZoom;
 	}
 
 	function createBackdrop() {
@@ -794,9 +804,45 @@
 		}
 	}
 
+	function clearLongPressTimer() {
+		if (longPressTimeoutId) {
+			window.clearTimeout(longPressTimeoutId);
+			longPressTimeoutId = 0;
+		}
+	}
+
+	function openPinnedClusterForMobileIndex(index: number) {
+		const station = visibleStations[index];
+		const clusterKey = clusterKeyByIndex[index];
+		const clusterStations = clusterKey ? getStationsForClusterKey(clusterKey) : [];
+
+		if (clusterStations.length > 1 && clusterKey) {
+			setStickyCluster(clusterKey);
+			return;
+		}
+
+		const tapClusterKey = toClusterKey(station.lat, station.lon, mobileTapClusterGridDegrees);
+		const nearbyStations = getStationsForClusterKey(tapClusterKey, mobileTapClusterGridDegrees);
+		if (nearbyStations.length > 1) {
+			setStickyStations(nearbyStations);
+			return;
+		}
+
+		if (clusterKey) {
+			setStickyCluster(clusterKey);
+		}
+	}
+
 	function handlePointerMove(event: PointerEvent) {
 		if (!(event.target instanceof HTMLCanvasElement)) {
 			return;
+		}
+
+		if (pointerIsActive) {
+			const movement = Math.hypot(event.clientX - pointerDownX, event.clientY - pointerDownY);
+			if (movement > clickMovementThreshold) {
+				clearLongPressTimer();
+			}
 		}
 
 		// Skip hover updates for 300ms after dragging to avoid flickering from damping
@@ -839,6 +885,29 @@
 		pointerDownX = event.clientX;
 		pointerDownY = event.clientY;
 		pointerIsActive = true;
+		longPressTriggered = false;
+		clearLongPressTimer();
+
+		const isMobile = window.innerWidth < 672;
+		if (!isMobile || event.pointerType === 'mouse' || !(event.target instanceof HTMLCanvasElement)) {
+			return;
+		}
+
+		const index = getIntersection(event);
+		if (typeof index !== 'number') {
+			return;
+		}
+
+		longPressTimeoutId = window.setTimeout(() => {
+			if (!pointerIsActive) {
+				return;
+			}
+
+			openPinnedClusterForMobileIndex(index);
+			longPressTriggered = true;
+			suppressCanvasSelectionUntil = Date.now() + 450;
+			lastPointerUpTime = Date.now();
+		}, mobileLongPressMs);
 	}
 
 	function handlePointerUp(event: PointerEvent) {
@@ -847,6 +916,11 @@
 		}
 
 		pointerIsActive = false;
+		clearLongPressTimer();
+		if (longPressTriggered) {
+			longPressTriggered = false;
+			return;
+		}
 		if (Date.now() < suppressCanvasSelectionUntil) {
 			return;
 		}
@@ -863,15 +937,14 @@
 		}
 
 		const isMobile = window.innerWidth < 672;
-		const clusterKey = clusterKeyByIndex[index];
-		const clusterStations = clusterKey ? getStationsForClusterKey(clusterKey) : [];
-
-		if (isMobile && clusterStations.length > 1 && clusterKey) {
-			setStickyCluster(clusterKey);
-			return;
-		}
-
 		if (isMobile) {
+			const clusterKey = clusterKeyByIndex[index];
+			const clusterStations = clusterKey ? getStationsForClusterKey(clusterKey) : [];
+			if (clusterStations.length > 1 && clusterKey) {
+				setStickyCluster(clusterKey);
+				return;
+			}
+
 			const station = visibleStations[index];
 			const tapClusterKey = toClusterKey(station.lat, station.lon, mobileTapClusterGridDegrees);
 			const nearbyStations = getStationsForClusterKey(tapClusterKey, mobileTapClusterGridDegrees);
@@ -881,6 +954,7 @@
 			}
 		}
 
+		const clusterKey = clusterKeyByIndex[index];
 		if (isSticky && clusterKey && clusterKey !== stickyClusterKey) {
 			setStickyCluster(clusterKey);
 		}
@@ -890,6 +964,8 @@
 
 	function resetPointerState() {
 		pointerIsActive = false;
+		longPressTriggered = false;
+		clearLongPressTimer();
 	}
 
 	function stopPanelInteraction(event: PointerEvent | MouseEvent) {
@@ -1368,6 +1444,9 @@
 		height: 100%;
 		width: 100%;
 		cursor: grab;
+		-webkit-user-select: none;
+		user-select: none;
+		-webkit-touch-callout: none;
 	}
 
 	canvas {
@@ -1398,6 +1477,9 @@
 		backdrop-filter: blur(10px);
 		pointer-events: auto;
 		overflow: hidden;
+		-webkit-user-select: none;
+		user-select: none;
+		-webkit-touch-callout: none;
 	}
 
 	.cluster-header {
@@ -1508,6 +1590,9 @@
 		border-radius: 2px;
 		z-index: 10;
 		pointer-events: auto;
+		-webkit-user-select: none;
+		user-select: none;
+		-webkit-touch-callout: none;
 	}
 
 	.debug-info {
@@ -1562,7 +1647,7 @@
 			left: 0.75rem;
 			right: 0.75rem;
 			top: auto;
-			bottom: calc(env(safe-area-inset-bottom, 0px) + 5rem);
+			bottom: calc(env(safe-area-inset-bottom, 0px) + 4rem);
 			transform: none;
 			width: auto;
 			max-height: min(32dvh, 14rem);

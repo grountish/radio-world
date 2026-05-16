@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.19';
+export const APP_VERSION = '0.0.20';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,17 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.19',
+		version: '0.0.20',
 		label: 'current',
+		fixes: [
+			'polished mobile controls: calmer close-up drag, hidden stats toggle, and non-selectable long-press surfaces',
+			'added mobile long-press cluster pinning and suppressed Brave/iOS context actions during hold interactions',
+			'refined search UX with animated expansion, larger mobile input sizing, and no auto-zoom on focus'
+		]
+	},
+	{
+		version: '0.0.19',
+		label: 'previous',
 		fixes: [
 			'collapsed the search input behind a magnifying-glass trigger by default',
 			'kept the HD filter visible while the search field expands inline when activated',
