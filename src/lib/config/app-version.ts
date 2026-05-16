@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.18';
+export const APP_VERSION = '0.0.19';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,17 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.18',
+		version: '0.0.19',
 		label: 'current',
+		fixes: [
+			'collapsed the search input behind a magnifying-glass trigger by default',
+			'kept the HD filter visible while the search field expands inline when activated',
+			'auto-collapse the search input again on blur when the query is empty and animate the expansion over 0.5 seconds'
+		]
+	},
+	{
+		version: '0.0.18',
+		label: 'previous',
 		fixes: [
 			'prefer https stream, homepage, and favicon urls over http during station normalization',
 			'upgrade stale insecure stream urls on the client before playback to avoid mixed-content warnings on the deployed https app',

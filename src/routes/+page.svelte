@@ -20,9 +20,11 @@
 	let globeFailed = $state(false);
 	let loadingScrambleCycle = $state(0);
 	let query = $state('');
+	let searchExpanded = $state(false);
 	let country = $state('all');
 	let hiQualityOnly = $state(false);
 	let selectedStation = $state<RadioStation | null>(null);
+	let queryInput: HTMLInputElement | null = null;
 	let audioElement = $state<HTMLAudioElement | null>(null);
 	let playerExpanded = $state(false);
 	let isPlaying = $state(false);
@@ -70,6 +72,7 @@
 	const themeCssVars = $derived(
 		`--accent: ${selectedTheme.accent}; --accent-rgb: ${selectedTheme.accentRgb};`
 	);
+	const isSearchExpanded = $derived(searchExpanded || query.trim().length > 0);
 	const spotlightStreamUrl = $derived.by(() => {
 		if (!spotlight) {
 			return '';
@@ -170,6 +173,7 @@
 
 		updateViewportState();
 		applyUrlState();
+		searchExpanded = query.trim().length > 0;
 		firstFrameId = requestAnimationFrame(() => {
 			secondFrameId = requestAnimationFrame(() => {
 				globeMountTimeoutId = window.setTimeout(() => {
@@ -360,6 +364,21 @@
 		query = '';
 		country = 'all';
 		hiQualityOnly = false;
+		searchExpanded = false;
+	}
+
+	function expandSearch() {
+		searchExpanded = true;
+		requestAnimationFrame(() => {
+			queryInput?.focus();
+			queryInput?.select();
+		});
+	}
+
+	function handleSearchBlur() {
+		if (query.trim().length === 0) {
+			searchExpanded = false;
+		}
 	}
 
 	function toggleMelt() {
@@ -376,10 +395,13 @@
 	}
 
 	function getStationBg(stationId: string): string {
-		const hues = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, 195, 210, 225, 240, 255, 270, 285, 300, 315, 330, 345];
+		const hues = [
+			0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, 195, 210, 225, 240, 255, 270, 285,
+			300, 315, 330, 345
+		];
 		let hash = 0;
 		for (let i = 0; i < stationId.length; i++) {
-			hash = ((hash << 5) - hash) + stationId.charCodeAt(i);
+			hash = (hash << 5) - hash + stationId.charCodeAt(i);
 			hash |= 0;
 		}
 		const hue = hues[Math.abs(hash) % hues.length];
@@ -492,7 +514,9 @@
 						return;
 					}
 
-					finish(() => reject(new Error(data.details || data.type || 'Unable to load HLS stream.')));
+					finish(() =>
+						reject(new Error(data.details || data.type || 'Unable to load HLS stream.'))
+					);
 				};
 
 				player.on(Hls.Events.MEDIA_ATTACHED, handleMediaAttached);
@@ -897,7 +921,28 @@
 
 		<div class="hud hud-top">
 			<div class="filter-row">
-				<input bind:value={query} placeholder="Search station, country, language" />
+				<div class="search-control" class:expanded={isSearchExpanded}>
+					<button
+						class="ghost-button search-toggle"
+						class:active={isSearchExpanded}
+						type="button"
+						onclick={expandSearch}
+						aria-label="Expand search input"
+						title="Search"
+					>
+						<span aria-hidden="true">⌕</span>
+					</button>
+
+					<div class="search-input-shell">
+						<input
+							bind:this={queryInput}
+							bind:value={query}
+							class="search-input"
+							placeholder="Search station, country, language"
+							onblur={handleSearchBlur}
+						/>
+					</div>
+				</div>
 
 				<button
 					class="ghost-button filter-toggle"
@@ -1408,8 +1453,52 @@
 
 	.filter-row {
 		display: flex;
+		align-items: stretch;
 		gap: 0.3rem;
 		padding: 0;
+	}
+
+	.search-control {
+		display: grid;
+		grid-template-columns: auto 0fr;
+		align-items: stretch;
+		flex: 0 0 auto;
+		min-width: 0;
+		transition: grid-template-columns 0.5s ease;
+	}
+
+	.search-control.expanded {
+		flex: 1 1 auto;
+		grid-template-columns: auto 1fr;
+	}
+
+	.search-input-shell {
+		width: 100%;
+		min-width: 0;
+		overflow: hidden;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.18s ease;
+	}
+
+	.search-control.expanded .search-input-shell {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.search-input {
+		width: 100%;
+		min-width: 0;
+		opacity: 0;
+		transform: translateX(-0.2rem);
+		transition:
+			opacity 0.18s ease,
+			transform 0.5s ease;
+	}
+
+	.search-control.expanded .search-input {
+		opacity: 1;
+		transform: translateX(0);
 	}
 
 	.metric-row {
@@ -1442,6 +1531,23 @@
 		padding: 0.3rem 0.6rem;
 		font-size: 0.72rem;
 		text-transform: lowercase;
+		outline: none;
+		box-shadow: none;
+		appearance: none;
+		-webkit-appearance: none;
+	}
+
+	input:not([type='range'])::placeholder {
+		color: #ffffff;
+		opacity: 1;
+	}
+
+	input:not([type='range']):focus,
+	input:not([type='range']):focus-visible,
+	input:not([type='range']):active {
+		outline: none;
+		box-shadow: none;
+		border: 0;
 	}
 
 	.ghost-button {
@@ -1455,8 +1561,20 @@
 	}
 
 	.filter-toggle {
-		color: rgba(242, 230, 210, 0.5);
+		color: white;
 		transition: all 0.1s;
+	}
+
+	.search-toggle {
+		color: white;
+		width: 2rem;
+		display: grid;
+		place-items: center;
+		flex-shrink: 0;
+	}
+
+	.search-toggle.active {
+		color: var(--orange);
 	}
 
 	.filter-toggle.active {
