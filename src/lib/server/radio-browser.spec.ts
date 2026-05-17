@@ -107,7 +107,81 @@ describe('stream verification', () => {
 		expect(isRejectedContentType('application/vnd.apple.mpegurl')).toBe(false);
 	});
 
-	it('keeps only recently verified playable stations', async () => {
+	it('rejects hls manifests that do not expose cors headers', async () => {
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+			const url = String(input);
+
+			if (url.includes('nocors.example.com')) {
+				return new Response('#EXTM3U', {
+					status: 200,
+					headers: {
+						'content-type': 'application/vnd.apple.mpegurl'
+					}
+				});
+			}
+
+			if (url.includes('cors.example.com')) {
+				return new Response('#EXTM3U', {
+					status: 200,
+					headers: {
+						'content-type': 'application/vnd.apple.mpegurl',
+						'access-control-allow-origin': '*'
+					}
+				});
+			}
+
+			return new Response(null, {
+				status: 503,
+				headers: {
+					'content-type': 'text/plain'
+				}
+			});
+		});
+
+		const stations = [
+			{
+				id: 'nocors-hls',
+				name: 'No CORS HLS',
+				country: 'France',
+				countryCode: 'FR',
+				language: 'French',
+				codec: 'HLS',
+				bitrate: 64,
+				votes: 10,
+				homepage: '',
+				favicon: '',
+				streamUrl: 'https://nocors.example.com/live.m3u8',
+				lat: 48.8,
+				lon: 2.3,
+				tags: []
+			},
+			{
+				id: 'cors-hls',
+				name: 'CORS HLS',
+				country: 'France',
+				countryCode: 'FR',
+				language: 'French',
+				codec: 'HLS',
+				bitrate: 64,
+				votes: 9,
+				homepage: '',
+				favicon: '',
+				streamUrl: 'https://cors.example.com/live.m3u8',
+				lat: 48.9,
+				lon: 2.4,
+				tags: []
+			}
+		];
+
+		const result = await verifyStations(stations);
+
+		expect(result).toEqual(
+			expect.arrayContaining([stations[1], expect.objectContaining({ id: 'nts-1' })])
+		);
+		expect(result).not.toEqual(expect.arrayContaining([stations[0]]));
+	});
+
+	it('validates playable stations across the whole catalog, including deep-tail entries', async () => {
 		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
 			const url = String(input);
 
@@ -136,6 +210,23 @@ describe('stream verification', () => {
 				}
 			});
 		});
+
+		const fillerStations = Array.from({ length: 2497 }, (_, index) => ({
+			id: `filler-${index}`,
+			name: `Filler ${index}`,
+			country: 'France',
+			countryCode: 'FR',
+			language: 'French',
+			codec: 'MP3',
+			bitrate: 128,
+			votes: 7 - index,
+			homepage: '',
+			favicon: '',
+			streamUrl: `https://good.example.com/filler-${index}`,
+			lat: 45 + index * 0.001,
+			lon: 2 + index * 0.001,
+			tags: []
+		}));
 
 		const stations = [
 			{
@@ -185,10 +276,36 @@ describe('stream verification', () => {
 				lat: 49,
 				lon: 2.5,
 				tags: []
+			},
+			...fillerStations,
+			{
+				id: 'tail',
+				name: 'Tail',
+				country: 'France',
+				countryCode: 'FR',
+				language: 'French',
+				codec: 'MP3',
+				bitrate: 128,
+				votes: 7,
+				homepage: '',
+				favicon: '',
+				streamUrl: 'https://good.example.com/tail',
+				lat: 49.1,
+				lon: 2.6,
+				tags: []
 			}
 		];
 
-		await expect(verifyStations(stations)).resolves.toEqual([stations[0]]);
+		const result = await verifyStations(stations);
+
+		expect(result).toEqual(
+			expect.arrayContaining([
+				stations[0],
+				stations[stations.length - 1],
+				expect.objectContaining({ id: 'nts-1' })
+			])
+		);
+		expect(result).not.toEqual(expect.arrayContaining([stations[1], stations[2]]));
 	});
 });
 

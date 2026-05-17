@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.20';
+export const APP_VERSION = '0.0.24';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,44 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.20',
+		version: '0.0.24',
 		label: 'current',
+		fixes: [
+			'quarantine stations on the client as soon as playback proves they are broken, so they stop reappearing during the same session',
+			'persist the failed-station quarantine in session storage and exclude those ids from the globe, search results, and favorites lists',
+			'keep background validation pruning bad streams on the server while closing the cold-start gap on the client'
+		]
+	},
+	{
+		version: '0.0.23',
+		label: 'previous',
+		fixes: [
+			'rejected HLS streams that are reachable on the server but unusable in the browser because they do not expose CORS headers',
+			'kept browser-safe HLS stations such as NTS while filtering qingting-style manifests that hls.js cannot actually load',
+			'added regression coverage for no-CORS HLS validation in the station filtering pipeline'
+		]
+	},
+	{
+		version: '0.0.22',
+		label: 'previous',
+		fixes: [
+			'extended background stream validation to work through the full cached catalog in batches instead of only the first slice',
+			'kept the station list stable while progressively removing streams that are actually proven bad',
+			'added regression coverage for deep-tail station validation so lower-ranked dead streams are filtered more consistently'
+		]
+	},
+	{
+		version: '0.0.21',
+		label: 'previous',
+		fixes: [
+			'fixed station validation so background filtering no longer collapses the catalog to a smaller verified subset',
+			'remove only stations that are actually proven bad while keeping the rest of the list stable',
+			'kept curated stations merged into the validated result and added regression coverage for the filtering flow'
+		]
+	},
+	{
+		version: '0.0.20',
+		label: 'previous',
 		fixes: [
 			'polished mobile controls: calmer close-up drag, hidden stats toggle, and non-selectable long-press surfaces',
 			'added mobile long-press cluster pinning and suppressed Brave/iOS context actions during hold interactions',

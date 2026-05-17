@@ -48,6 +48,7 @@
 	let isOnline = $state(true);
 	let rawApiStats = $state<any>(null);
 	let failedFavicons = $state<Set<string>>(new Set());
+	let failedStationIds = $state<Set<string>>(new Set());
 	let favoriteFocusRequestId = $state(0);
 	let isCompactViewport = $state(false);
 	let instructionsOpen = $state(true);
@@ -73,6 +74,7 @@
 		`--accent: ${selectedTheme.accent}; --accent-rgb: ${selectedTheme.accentRgb};`
 	);
 	const isSearchExpanded = $derived(searchExpanded || query.trim().length > 0);
+	const playableStations = $derived(stations.filter((station) => !failedStationIds.has(station.id)));
 	const spotlightStreamUrl = $derived.by(() => {
 		if (!spotlight) {
 			return '';
@@ -196,6 +198,15 @@
 			selectedThemeId = savedThemeId;
 		}
 
+		const savedFailedStationIds = sessionStorage.getItem('radio-world-failed-stations');
+		if (savedFailedStationIds) {
+			try {
+				failedStationIds = new Set(JSON.parse(savedFailedStationIds) as string[]);
+			} catch {
+				// ignore malformed storage
+			}
+		}
+
 		try {
 			const startTime = performance.now();
 			const response = await fetch('/api/stations');
@@ -239,7 +250,7 @@
 	});
 
 	const countryOptions = $derived.by(() => {
-		return [...new Set(stations.map((station) => station.country).filter(Boolean))].sort(
+		return [...new Set(playableStations.map((station) => station.country).filter(Boolean))].sort(
 			(left, right) => left.localeCompare(right)
 		);
 	});
@@ -247,7 +258,7 @@
 	const visibleStations = $derived.by(() => {
 		const normalizedQuery = query.trim().toLowerCase();
 
-		return stations.filter((station) => {
+		return playableStations.filter((station) => {
 			if (country !== 'all' && station.country !== country) {
 				return false;
 			}
@@ -271,16 +282,39 @@
 	});
 
 	const languageCount = $derived.by(() => {
-		return new Set(stations.map((station) => station.language).filter(Boolean)).size;
+		return new Set(playableStations.map((station) => station.language).filter(Boolean)).size;
 	});
 
 	const spotlight = $derived(selectedStation);
+	const spotlightFailed = $derived.by(() =>
+		selectedStation ? failedStationIds.has(selectedStation.id) : false
+	);
+	const spotlightName = $derived.by(() => {
+		if (!selectedStation) {
+			return '';
+		}
+
+		return spotlightFailed ? 's!gnal l0st / st@ti0n dr0pped' : selectedStation.name;
+	});
 	const spotlightSubtitle = $derived.by(() => {
 		if (!selectedStation) {
 			return '';
 		}
 
+		if (spotlightFailed) {
+			return 'str3am unr3ach@ble • rem0ved fr0m m@p';
+		}
+
 		return `${selectedStation.country} • ${selectedStation.language} • ${selectedStation.codec}${selectedStation.bitrate ? ` • ${selectedStation.bitrate} kbps` : ''}`;
+	});
+	const spotlightCoordinates = $derived.by(() => {
+		if (!selectedStation) {
+			return '';
+		}
+
+		return spotlightFailed
+			? 'c00rdin@tes unl0cked / n0 sign@l'
+			: `Lat ${selectedStation.lat.toFixed(2)} / Lon ${selectedStation.lon.toFixed(2)}`;
 	});
 
 	const refreshedAt = $derived.by(() => {
@@ -294,8 +328,34 @@
 		}).format(new Date(stats.updatedAt));
 	});
 
-	const favoriteStations = $derived(stations.filter((s) => favoriteIds.has(s.id)));
+	const favoriteStations = $derived(playableStations.filter((s) => favoriteIds.has(s.id)));
 	const playingStation = $derived(isPlaying ? selectedStation : null);
+
+	function isIgnorablePlaybackError(error: unknown) {
+		if (error instanceof DOMException) {
+			return error.name === 'NotAllowedError' || error.name === 'AbortError';
+		}
+
+		if (error instanceof Error) {
+			const details = `${error.name} ${error.message}`.toLowerCase();
+			return (
+				details.includes('notallowederror') ||
+				details.includes('aborterror') ||
+				details.includes('interrupted')
+			);
+		}
+
+		return false;
+	}
+
+	function quarantineFailedStation(station: RadioStation) {
+		failedStationIds = new Set([...failedStationIds, station.id]);
+		if (favoriteIds.has(station.id)) {
+			const nextFavoriteIds = new Set(favoriteIds);
+			nextFavoriteIds.delete(station.id);
+			favoriteIds = nextFavoriteIds;
+		}
+	}
 
 	function pickStation(station: RadioStation | null) {
 		setSelectedStation(station, { focus: true });
@@ -615,6 +675,9 @@
 			await audioElement.play();
 		} catch (error) {
 			setPlaybackStatus('error');
+			if (!isIgnorablePlaybackError(error)) {
+				quarantineFailedStation(station);
+			}
 			console.warn(failureLabel, error);
 		}
 	}
@@ -746,6 +809,14 @@
 
 	$effect(() => {
 		localStorage.setItem('radio-world-favorites', JSON.stringify([...favoriteIds]));
+	});
+
+	$effect(() => {
+		if (typeof window === 'undefined') {
+			return;
+		}
+
+		sessionStorage.setItem('radio-world-failed-stations', JSON.stringify([...failedStationIds]));
 	});
 
 	$effect(() => {
@@ -1111,7 +1182,7 @@
 							<ScrambleText
 								as="p"
 								className="station-name compact-station-name"
-								text={spotlight.name}
+								text={spotlightName}
 							/>
 
 							<button
@@ -1170,7 +1241,7 @@
 					{:else}
 						<div class="station-title">
 							<div>
-								<ScrambleText as="p" className="station-name" text={spotlight.name} />
+								<ScrambleText as="p" className="station-name" text={spotlightName} />
 								<ScrambleText as="p" className="station-subtitle" text={spotlightSubtitle} />
 							</div>
 							<button
@@ -1209,7 +1280,7 @@
 						<ScrambleText
 							as="p"
 							className="coordinates"
-							text={`Lat ${spotlight.lat.toFixed(2)} / Lon ${spotlight.lon.toFixed(2)}`}
+							text={spotlightCoordinates}
 						/>
 
 						{#if currentTrackTitle || currentTrackArtist}

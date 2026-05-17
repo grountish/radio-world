@@ -10,7 +10,6 @@ const CACHE_TTL_MS = 30 * 60 * 1000;
 const STREAM_VALIDATION_TTL_MS = 2 * 60 * 60 * 1000;
 const STREAM_VALIDATION_TIMEOUT_MS = 4500;
 const STREAM_VALIDATION_CONCURRENCY = 24;
-const STREAM_VALIDATION_TARGET = 1500;
 const STREAM_VALIDATION_CANDIDATE_LIMIT = 2500;
 
 type RawStation = {
@@ -41,6 +40,7 @@ const cache: {
 	expiresAt: number;
 	updatedAt: string;
 	validatedUpdatedAt: string;
+	sourceStations: RadioStation[];
 	stations: RadioStation[];
 	pending: Promise<RadioStationSnapshot> | null;
 	validationPending: Promise<void> | null;
@@ -48,6 +48,7 @@ const cache: {
 	expiresAt: 0,
 	updatedAt: new Date(0).toISOString(),
 	validatedUpdatedAt: '',
+	sourceStations: [],
 	stations: [],
 	pending: null,
 	validationPending: null
@@ -156,6 +157,15 @@ export function isRejectedContentType(contentType: string): boolean {
 	);
 }
 
+function isHlsResponse(streamUrl: string, contentType: string): boolean {
+	return isHlsStreamUrl(streamUrl) || contentType.toLowerCase().includes('application/vnd.apple.mpegurl');
+}
+
+function hasCorsSupport(headers: Headers): boolean {
+	const value = headers.get('access-control-allow-origin');
+	return value === '*' || (typeof value === 'string' && value.trim().length > 0);
+}
+
 async function validateStreamUrl(streamUrl: string): Promise<boolean> {
 	const now = Date.now();
 	const cached = streamValidationCache.get(streamUrl);
@@ -179,7 +189,10 @@ async function validateStreamUrl(streamUrl: string): Promise<boolean> {
 			}
 		});
 		const contentType = response.headers.get('content-type') ?? '';
-		const ok = response.ok && !isRejectedContentType(contentType);
+		const ok =
+			response.ok &&
+			!isRejectedContentType(contentType) &&
+			(!isHlsResponse(streamUrl, contentType) || hasCorsSupport(response.headers));
 
 		response.body?.cancel().catch(() => {
 			// Ignore cancellation failures from already-closed streams.
@@ -194,41 +207,55 @@ async function validateStreamUrl(streamUrl: string): Promise<boolean> {
 	}
 }
 
-export async function verifyStations(stations: RadioStation[]): Promise<RadioStation[]> {
-	const candidates = stations.slice(0, STREAM_VALIDATION_CANDIDATE_LIMIT);
-	const verified: Array<RadioStation | null> = new Array(candidates.length).fill(null);
+function isHlsStreamUrl(streamUrl: string) {
+	return /\.m3u8($|[?#])/i.test(streamUrl);
+}
+
+async function verifyStationBatch(
+	stations: RadioStation[],
+	onValidated?: (station: RadioStation, ok: boolean) => void
+): Promise<RadioStation[]> {
+	const verified: boolean[] = new Array(stations.length).fill(false);
 	let nextIndex = 0;
-	let acceptedCount = 0;
 
 	async function worker() {
 		for (;;) {
-			if (acceptedCount >= STREAM_VALIDATION_TARGET) {
-				return;
-			}
-
 			const currentIndex = nextIndex;
 			nextIndex += 1;
 
-			if (currentIndex >= candidates.length) {
+			if (currentIndex >= stations.length) {
 				return;
 			}
 
-			const station = candidates[currentIndex];
-			if (await validateStreamUrl(station.streamUrl)) {
-				verified[currentIndex] = station;
-				acceptedCount += 1;
-			}
+			const station = stations[currentIndex];
+			const ok = await validateStreamUrl(station.streamUrl);
+			verified[currentIndex] = ok;
+			onValidated?.(station, ok);
 		}
 	}
 
 	await Promise.all(
-		Array.from({ length: Math.min(STREAM_VALIDATION_CONCURRENCY, candidates.length) }, () =>
+		Array.from({ length: Math.min(STREAM_VALIDATION_CONCURRENCY, stations.length) }, () =>
 			worker()
 		)
 	);
 
-	const filtered = verified.filter((station): station is RadioStation => station !== null);
-	const baseline = filtered.length > 0 ? filtered : stations.slice(0, Math.min(stations.length, 250));
+	return stations.filter((_, index) => verified[index]);
+}
+
+function filterInvalidStations(
+	sourceStations: RadioStation[],
+	invalidStationIds: Set<string>
+): RadioStation[] {
+	const curatedIds = new Set(getCuratedStations().map((station) => station.id));
+	return sourceStations.filter(
+		(station) => !invalidStationIds.has(station.id) || curatedIds.has(station.id)
+	);
+}
+
+export async function verifyStations(stations: RadioStation[]): Promise<RadioStation[]> {
+	const verifiedStations = await verifyStationBatch(stations);
+	const baseline = verifiedStations.length > 0 ? verifiedStations : stations.slice(0, Math.min(stations.length, 250));
 	return mergeStations(baseline, getCuratedStations());
 }
 
@@ -237,15 +264,43 @@ function scheduleStationValidation(stations: RadioStation[], updatedAt: string) 
 		return;
 	}
 
-	cache.validationPending = verifyStations(stations)
-		.then((verifiedStations) => {
+	cache.validationPending = (async () => {
+		const invalidStationIds = new Set<string>();
+
+		for (let offset = 0; offset < stations.length; offset += STREAM_VALIDATION_CANDIDATE_LIMIT) {
 			if (cache.updatedAt !== updatedAt) {
 				return;
 			}
 
-			cache.stations = verifiedStations;
-			cache.validatedUpdatedAt = updatedAt;
-		})
+			const batch = stations.slice(offset, offset + STREAM_VALIDATION_CANDIDATE_LIMIT);
+			const verifiedBatch = await verifyStationBatch(batch, (station, ok) => {
+				if (!ok) {
+					invalidStationIds.add(station.id);
+				}
+
+				if (cache.updatedAt !== updatedAt) {
+					return;
+				}
+
+				cache.stations = filterInvalidStations(stations, invalidStationIds);
+			});
+			const verifiedIds = new Set(verifiedBatch.map((station) => station.id));
+
+			for (const station of batch) {
+				if (!verifiedIds.has(station.id)) {
+					invalidStationIds.add(station.id);
+				}
+			}
+
+			if (cache.updatedAt !== updatedAt) {
+				return;
+			}
+
+			cache.stations = filterInvalidStations(stations, invalidStationIds);
+		}
+
+		cache.validatedUpdatedAt = updatedAt;
+	})()
 		.catch((error: unknown) => {
 			console.warn('Background station validation failed', error);
 		})
@@ -350,7 +405,7 @@ export async function getRadioStations(forceRefresh = false): Promise<RadioStati
 	const now = Date.now();
 
 	if (!forceRefresh && cache.stations.length > 0 && cache.expiresAt > now) {
-		scheduleStationValidation(cache.stations, cache.updatedAt);
+		scheduleStationValidation(cache.sourceStations.length > 0 ? cache.sourceStations : cache.stations, cache.updatedAt);
 		return {
 			stations: cache.stations,
 			updatedAt: cache.updatedAt,
@@ -364,6 +419,7 @@ export async function getRadioStations(forceRefresh = false): Promise<RadioStati
 
 	cache.pending = loadStations()
 		.then((snapshot) => {
+			cache.sourceStations = snapshot.stations;
 			cache.stations = snapshot.stations;
 			cache.updatedAt = snapshot.updatedAt;
 			cache.validatedUpdatedAt = '';
