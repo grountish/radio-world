@@ -1882,20 +1882,31 @@
 		font-size: 0.78rem;
 	}
 
-	.track-info {
-		margin: 0.6rem 0 0;
-		padding: 0.5rem 0;
-		border-top: 1px solid rgba(var(--accent-rgb), 0.2);
-		border-bottom: 1px solid rgba(var(--accent-rgb), 0.2);
-	}
+		.track-info {
+			margin: 0.6rem 0 0;
+			padding: 0.5rem 0;
+			border-top: 1px solid rgba(var(--accent-rgb), 0.2);
+			border-bottom: 1px solid rgba(var(--accent-rgb), 0.2);
+		}
 
-	.track-artist {
-		margin: 0;
-		color: rgba(255, 255, 255, 0.6);
-		font-size: 0.72rem;
-		line-height: 1.4;
-		text-transform: lowercase;
-	}
+		.track-artist,
+		.track-title {
+			font-family:
+				ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono',
+				'Roboto Mono', 'Noto Sans Mono CJK SC', 'Noto Sans Mono CJK TC', 'Noto Sans Mono CJK JP',
+				'Noto Sans Mono', 'Noto Sans CJK SC', 'Noto Sans CJK TC', 'Noto Sans CJK JP',
+				'PingFang SC', 'PingFang TC', 'Hiragino Sans', 'Yu Gothic', 'Microsoft YaHei', monospace,
+				sans-serif;
+			letter-spacing: 0;
+			text-transform: none;
+		}
+
+		.track-artist {
+			margin: 0;
+			color: rgba(255, 255, 255, 0.6);
+			font-size: 0.72rem;
+			line-height: 1.4;
+		}
 
 	.track-title {
 		margin: 0.2rem 0 0;
