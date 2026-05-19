@@ -74,7 +74,9 @@
 		`--accent: ${selectedTheme.accent}; --accent-rgb: ${selectedTheme.accentRgb};`
 	);
 	const isSearchExpanded = $derived(searchExpanded || query.trim().length > 0);
-	const playableStations = $derived(stations.filter((station) => !failedStationIds.has(station.id)));
+	const playableStations = $derived(
+		stations.filter((station) => !failedStationIds.has(station.id))
+	);
 	const spotlightStreamUrl = $derived.by(() => {
 		if (!spotlight) {
 			return '';
@@ -146,7 +148,7 @@
 		}
 	}
 
-	onMount(async () => {
+	onMount(() => {
 		let firstFrameId = 0;
 		let secondFrameId = 0;
 		let globeMountTimeoutId = 0;
@@ -207,24 +209,26 @@
 			}
 		}
 
-		try {
-			const startTime = performance.now();
-			const response = await fetch('/api/stations');
-			apiResponseTime = Math.round(performance.now() - startTime);
-			if (!response.ok) {
-				throw new Error('The live radio directory could not be reached.');
-			}
+		void (async () => {
+			try {
+				const startTime = performance.now();
+				const response = await fetch('/api/stations');
+				apiResponseTime = Math.round(performance.now() - startTime);
+				if (!response.ok) {
+					throw new Error('The live radio directory could not be reached.');
+				}
 
-			const payload = (await response.json()) as RadioStationPayload;
-			stations = payload.stations;
-			stats = payload.stats;
-			rawApiStats = payload.stats;
-		} catch (cause) {
-			error =
-				cause instanceof Error ? cause.message : 'The live radio directory could not be reached.';
-		} finally {
-			isLoading = false;
-		}
+				const payload = (await response.json()) as RadioStationPayload;
+				stations = payload.stations;
+				stats = payload.stats;
+				rawApiStats = payload.stats;
+			} catch (cause) {
+				error =
+					cause instanceof Error ? cause.message : 'The live radio directory could not be reached.';
+			} finally {
+				isLoading = false;
+			}
+		})();
 
 		if (typeof window !== 'undefined') {
 			window.addEventListener('online', () => (isOnline = true));
@@ -1277,11 +1281,7 @@
 							{/if}
 						</div>
 
-						<ScrambleText
-							as="p"
-							className="coordinates"
-							text={spotlightCoordinates}
-						/>
+						<ScrambleText as="p" className="coordinates" text={spotlightCoordinates} />
 
 						{#if currentTrackTitle || currentTrackArtist}
 							<div class="track-info">

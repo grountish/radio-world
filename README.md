@@ -1,6 +1,6 @@
-# Signal Atlas
+# Radio World
 
-Signal Atlas is a SvelteKit app that pulls geo-tagged internet radio stations from the Radio Browser directory and projects them onto an interactive 3D globe.
+Radio World is a SvelteKit app that pulls geo-tagged internet radio stations from the Radio Browser directory and projects them onto an interactive 3D globe.
 
 ## Stack
 

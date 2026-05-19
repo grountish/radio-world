@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.24';
+export const APP_VERSION = '0.0.25';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,17 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.24',
+		version: '0.0.25',
 		label: 'current',
+		fixes: [
+			'added a proper app title and description plus canonical, robots, Open Graph, and Twitter metadata in the shared document head',
+			'added a web app manifest and dedicated social-card asset so the app presents cleanly in installs, previews, and shares',
+			'published structured data for the website and app so search engines get richer context about the radio globe experience'
+		]
+	},
+	{
+		version: '0.0.24',
+		label: 'previous',
 		fixes: [
 			'quarantine stations on the client as soon as playback proves they are broken, so they stop reappearing during the same session',
 			'persist the failed-station quarantine in session storage and exclude those ids from the globe, search results, and favorites lists',
@@ -119,16 +128,12 @@ export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
 		version: '0.0.11',
 		label: 'previous',
-		fixes: [
-			'added Worldwide FM from London as a curated station'
-		]
+		fixes: ['added Worldwide FM from London as a curated station']
 	},
 	{
 		version: '0.0.10',
 		label: 'previous',
-		fixes: [
-			'added Oroko Radio from Accra, Ghana as a curated station'
-		]
+		fixes: ['added Oroko Radio from Accra, Ghana as a curated station']
 	},
 	{
 		version: '0.0.9',
