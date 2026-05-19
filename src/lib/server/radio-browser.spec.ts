@@ -310,7 +310,7 @@ describe('stream verification', () => {
 });
 
 describe('curated stations', () => {
-	it('includes official NTS live channels', () => {
+	it('includes official curated live channels', () => {
 		expect(getCuratedStations()).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
@@ -322,6 +322,11 @@ describe('curated stations', () => {
 					id: 'nts-2',
 					name: 'NTS Radio 2',
 					streamUrl: 'https://streams.radiomast.io/nts2/hls.m3u8'
+				}),
+				expect.objectContaining({
+					id: 'hkcr',
+					name: 'Hong Kong Community Radio',
+					streamUrl: 'https://stream-test.hkcr.live/hls/main.m3u8'
 				})
 			])
 		);

@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.26';
+export const APP_VERSION = '0.0.27';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,16 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.26',
+		version: '0.0.27',
 		label: 'current',
+		fixes: [
+			'added Hong Kong Community Radio as a curated station with its verified browser-playable HLS livestream',
+			'kept the curated catalog regression coverage up to date so official hand-picked stations remain pinned in the dataset'
+		]
+	},
+	{
+		version: '0.0.26',
+		label: 'previous',
 		fixes: [
 			'added runtime track metadata parsing for HLS ID3 tags so compatible stations can surface live artist and title updates',
 			'added an ICY metadata sidecar reader for direct stream urls when the server exposes metadata intervals and browser CORS allows it',

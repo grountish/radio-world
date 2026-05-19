@@ -21,6 +21,11 @@ const tokyoLon = 139.6503;
 const rinseFmHomepage = 'https://rinse.fm/';
 const rinseFmFavicon = 'https://rinse.fm/favicon.ico';
 
+const hkcrHomepage = 'https://hkcr.live/livestream';
+const hkcrFavicon = 'https://hkcr.live/favicon.ico';
+const hongKongLat = 22.3193;
+const hongKongLon = 114.1694;
+
 const curatedStations: RadioStation[] = [
 	{
 		id: 'nts-1',
@@ -117,6 +122,22 @@ const curatedStations: RadioStation[] = [
 		lat: londonLat,
 		lon: londonLon,
 		tags: ['rinse', 'curated', 'uk', 'electronic', 'live']
+	},
+	{
+		id: 'hkcr',
+		name: 'Hong Kong Community Radio',
+		country: 'Hong Kong',
+		countryCode: 'HK',
+		language: 'English',
+		codec: 'HLS',
+		bitrate: null,
+		votes: 100000,
+		homepage: hkcrHomepage,
+		favicon: hkcrFavicon,
+		streamUrl: 'https://stream-test.hkcr.live/hls/main.m3u8',
+		lat: hongKongLat,
+		lon: hongKongLon,
+		tags: ['hkcr', 'curated', 'hongkong', 'community', 'electronic', 'live']
 	}
 ];
 

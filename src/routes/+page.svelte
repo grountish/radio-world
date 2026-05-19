@@ -80,6 +80,14 @@
 	const themeCssVars = $derived(
 		`--accent: ${selectedTheme.accent}; --accent-rgb: ${selectedTheme.accentRgb};`
 	);
+	const currentTrackSearchUrl = $derived.by(() => {
+		const queryParts = [currentTrackArtist, currentTrackTitle].map((value) => value.trim()).filter(Boolean);
+		if (queryParts.length === 0) {
+			return '';
+		}
+
+		return `https://www.google.com/search?q=${encodeURIComponent(queryParts.join(' '))}`;
+	});
 	const isSearchExpanded = $derived(searchExpanded || query.trim().length > 0);
 	const playableStations = $derived(
 		stations.filter((station) => !failedStationIds.has(station.id))
@@ -484,6 +492,14 @@
 		}
 		const hue = hues[Math.abs(hash) % hues.length];
 		return `hsl(${hue}, 65%, 55%)`;
+	}
+
+	function markFaviconFailed(stationId: string) {
+		if (failedFavicons.has(stationId)) {
+			return;
+		}
+
+		failedFavicons = new Set([...failedFavicons, stationId]);
 	}
 
 	function formatTime(totalSeconds: number) {
@@ -1421,9 +1437,7 @@
 									class="station-icon"
 									src={spotlight.favicon}
 									loading="lazy"
-									onerror={(e) => {
-										failedFavicons.add(spotlight.id);
-									}}
+									onerror={() => markFaviconFailed(spotlight.id)}
 								/>
 							{/if}
 							{#if !spotlight.favicon || failedFavicons.has(spotlight.id)}
@@ -1445,7 +1459,16 @@
 									<p class="track-artist">{currentTrackArtist}</p>
 								{/if}
 								{#if currentTrackTitle}
-									<p class="track-title">{currentTrackTitle}</p>
+									<p class="track-title">
+										<a
+											href={currentTrackSearchUrl}
+											target="_blank"
+											rel="noreferrer noopener"
+											aria-label={`Search for ${[currentTrackArtist, currentTrackTitle].filter(Boolean).join(' ')}`}
+										>
+											{currentTrackTitle}
+										</a>
+									</p>
 								{/if}
 							</div>
 						{/if}
@@ -1880,6 +1903,19 @@
 		font-size: 0.84rem;
 		line-height: 1.4;
 		font-weight: 500;
+	}
+
+	.track-title a {
+		color: inherit;
+		text-decoration: none;
+		border-bottom: 1px solid transparent;
+		transition: border-color 150ms ease, opacity 150ms ease;
+	}
+
+	.track-title a:hover,
+	.track-title a:focus-visible {
+		border-bottom-color: currentColor;
+		outline: none;
 	}
 
 	.station-icon {
