@@ -24,11 +24,11 @@
 		slow: { extraFrames: 40, frameDurationMs: 16 }
 	};
 	const speedConfig = $derived(speedConfigs[speed]);
-	let displayText = $state(animateInitial ? '' : text);
+	let displayText = $state('');
 	let initialized = false;
 	let reduceMotion = false;
 	let frameId = 0;
-	let lastTargetText = text;
+	let lastTargetText = '';
 
 	function cancelFrame() {
 		if (frameId) {
@@ -127,7 +127,7 @@
 			reduceMotion = event.matches;
 			if (reduceMotion) {
 				cancelFrame();
-				displayText = text;
+				displayText = lastTargetText;
 			}
 		};
 

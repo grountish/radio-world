@@ -63,9 +63,9 @@
 
 	const radius = 1.35;
 	const clusterGridDegrees = 0.2;
-	const baseColor = new THREE.Color(themeAccent);
-	const hoverColor = new THREE.Color(themeAccent);
-	const selectedColor = new THREE.Color(themeAccent);
+	const baseColor = new THREE.Color();
+	const hoverColor = new THREE.Color();
+	const selectedColor = new THREE.Color();
 	const pointer = new THREE.Vector2();
 	const raycaster = new THREE.Raycaster();
 	const dummy = new THREE.Object3D();
@@ -889,7 +889,11 @@
 		clearLongPressTimer();
 
 		const isMobile = window.innerWidth < 672;
-		if (!isMobile || event.pointerType === 'mouse' || !(event.target instanceof HTMLCanvasElement)) {
+		if (
+			!isMobile ||
+			event.pointerType === 'mouse' ||
+			!(event.target instanceof HTMLCanvasElement)
+		) {
 			return;
 		}
 
@@ -1324,9 +1328,9 @@
 			<div
 				class="cluster-panel"
 				class:is-sticky={isSticky}
+				role="presentation"
 				onpointerdown={stopPanelInteraction}
 				onpointerup={stopPanelInteraction}
-				onclick={stopPanelInteraction}
 			>
 				<div class="cluster-header">
 					<span class="cluster-label">

@@ -955,7 +955,12 @@
 	});
 </script>
 
-<div class="page-shell" style={themeCssVars} oncontextmenu={handleMobileContextMenu}>
+<div
+	class="page-shell"
+	style={themeCssVars}
+	role="presentation"
+	oncontextmenu={handleMobileContextMenu}
+>
 	<section class="stage">
 		{#if shouldMountGlobe && !error}
 			<RadioGlobe

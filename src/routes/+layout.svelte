@@ -22,7 +22,10 @@
 	const canonicalUrl = $derived(buildCanonicalUrl(page.url.origin, page.url.pathname));
 	const socialImageUrl = $derived(buildAbsoluteUrl(page.url.origin, APP_SOCIAL_IMAGE_PATH));
 	const metadataJsonLd = $derived(
-		`<script type="application/ld+json">${JSON.stringify(buildMetadataJsonLd(canonicalUrl, socialImageUrl))}<\\/script>`
+		JSON.stringify(buildMetadataJsonLd(canonicalUrl, socialImageUrl)).replace(/</g, '\\u003c')
+	);
+	const metadataJsonLdTag = $derived(
+		'<script type="application/ld+json">' + metadataJsonLd + '</' + 'script>'
 	);
 </script>
 
@@ -74,7 +77,7 @@
 	<meta name="twitter:image" content={socialImageUrl} />
 	<meta name="twitter:image:alt" content={`${APP_NAME} social card`} />
 
-	{@html metadataJsonLd}
+	{@html metadataJsonLdTag}
 </svelte:head>
 
 <div class="page-content">
