@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.25';
+export const APP_VERSION = '0.0.26';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,17 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.25',
+		version: '0.0.26',
 		label: 'current',
+		fixes: [
+			'added runtime track metadata parsing for HLS ID3 tags so compatible stations can surface live artist and title updates',
+			'added an ICY metadata sidecar reader for direct stream urls when the server exposes metadata intervals and browser CORS allows it',
+			'kept the player resilient by clearing stale metadata on station switches and falling back to native audio metadata and text tracks when available'
+		]
+	},
+	{
+		version: '0.0.25',
+		label: 'previous',
 		fixes: [
 			'added a proper app title and description plus canonical, robots, Open Graph, and Twitter metadata in the shared document head',
 			'added a web app manifest and dedicated social-card asset so the app presents cleanly in installs, previews, and shares',

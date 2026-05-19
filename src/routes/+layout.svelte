@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import favicon from '$lib/assets/favicon.svg';
 	import {
 		APP_ACCENT_COLOR,
 		APP_CATEGORY,
@@ -18,6 +17,7 @@
 	} from '$lib/config/app-metadata';
 
 	let { children } = $props();
+	const faviconHref = '/favicon.svg';
 
 	const canonicalUrl = $derived(buildCanonicalUrl(page.url.origin, page.url.pathname));
 	const socialImageUrl = $derived(buildAbsoluteUrl(page.url.origin, APP_SOCIAL_IMAGE_PATH));
@@ -55,9 +55,9 @@
 
 	<link rel="canonical" href={canonicalUrl} />
 	<link rel="manifest" href="/site.webmanifest" />
-	<link rel="icon" href={favicon} />
-	<link rel="shortcut icon" href={favicon} />
-	<link rel="mask-icon" href={favicon} color={APP_ACCENT_COLOR} />
+	<link rel="icon" type="image/svg+xml" href={faviconHref} />
+	<link rel="shortcut icon" href={faviconHref} />
+	<link rel="mask-icon" href={faviconHref} color={APP_ACCENT_COLOR} />
 
 	<meta property="og:type" content="website" />
 	<meta property="og:site_name" content={APP_NAME} />

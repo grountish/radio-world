@@ -6,6 +6,11 @@
 	import { VERSION_HISTORY } from '$lib/config/app-version';
 	import type { RadioStation, RadioStationPayload } from '$lib/types/radio';
 	import { buildRadioUrl, parseRadioUrlState } from '$lib/utils/radio-url';
+	import {
+		extractTrackMetadataFromCueValue,
+		extractTrackMetadataFromIcyMetadata,
+		extractTrackMetadataFromId3
+	} from '$lib/utils/stream-metadata';
 	import { preferSecureUrl } from '$lib/utils/url-security';
 
 	type HlsClass = typeof import('hls.js').default;
@@ -37,6 +42,8 @@
 	let loadedStreamUrl = '';
 	let hlsPlayer: HlsInstance | null = null;
 	let hlsClass: HlsClass | null = null;
+	let metadataMonitorController: AbortController | null = null;
+	let metadataMonitorKey = '';
 	let sourcePreparationKey = '';
 	let sourcePreparationPromise: Promise<boolean> | null = null;
 	let favoriteIds = $state<Set<string>>(new Set());
@@ -245,6 +252,7 @@
 			cancelAnimationFrame(secondFrameId);
 			window.clearTimeout(globeMountTimeoutId);
 			destroyHlsPlayer();
+			stopTrackMetadataMonitor();
 			if (typeof window !== 'undefined') {
 				window.removeEventListener('resize', updateViewportState);
 				window.removeEventListener('popstate', handlePopState);
@@ -521,6 +529,125 @@
 		hlsPlayer = null;
 	}
 
+	function stopTrackMetadataMonitor() {
+		metadataMonitorController?.abort();
+		metadataMonitorController = null;
+		metadataMonitorKey = '';
+	}
+
+	function applyTrackMetadata(nextArtist: string, nextTitle: string, monitorKey?: string) {
+		if (monitorKey && metadataMonitorKey && monitorKey !== metadataMonitorKey) {
+			return;
+		}
+
+		const artist = nextArtist.trim();
+		const title = nextTitle.trim();
+		if (!artist && !title) {
+			return;
+		}
+
+		currentTrackArtist = artist;
+		currentTrackTitle = title;
+	}
+
+	async function startIcyMetadataMonitor(station: RadioStation, streamUrl: string) {
+		if (typeof window === 'undefined' || isHlsStreamUrl(streamUrl)) {
+			return;
+		}
+
+		stopTrackMetadataMonitor();
+		const controller = new AbortController();
+		const monitorKey = `${station.id}|${streamUrl}`;
+		metadataMonitorController = controller;
+		metadataMonitorKey = monitorKey;
+
+		try {
+			const response = await fetch(streamUrl, {
+				method: 'GET',
+				mode: 'cors',
+				cache: 'no-store',
+				signal: controller.signal,
+				headers: {
+					accept: '*/*',
+					'Icy-MetaData': '1'
+				}
+			});
+
+			const metaInt = Number(response.headers.get('icy-metaint') ?? '');
+			if (!response.ok || !response.body || !Number.isFinite(metaInt) || metaInt <= 0) {
+				return;
+			}
+
+			const reader = response.body.getReader();
+			let buffer = new Uint8Array(0);
+			let bytesUntilMetadata = metaInt;
+			let pendingMetadataLength = -1;
+
+			while (!controller.signal.aborted) {
+				const { done, value } = await reader.read();
+				if (done || !value) {
+					break;
+				}
+
+				const nextBuffer = new Uint8Array(buffer.length + value.length);
+				nextBuffer.set(buffer);
+				nextBuffer.set(value, buffer.length);
+				buffer = nextBuffer;
+
+				let offset = 0;
+				while (offset < buffer.length) {
+					if (pendingMetadataLength < 0) {
+						if (buffer.length - offset < bytesUntilMetadata) {
+							bytesUntilMetadata -= buffer.length - offset;
+							offset = buffer.length;
+							break;
+						}
+
+						offset += bytesUntilMetadata;
+						bytesUntilMetadata = 0;
+						if (offset >= buffer.length) {
+							break;
+						}
+
+						pendingMetadataLength = (buffer[offset] ?? 0) * 16;
+						offset += 1;
+						if (pendingMetadataLength === 0) {
+							bytesUntilMetadata = metaInt;
+							pendingMetadataLength = -1;
+						}
+					}
+
+					if (pendingMetadataLength >= 0) {
+						if (buffer.length - offset < pendingMetadataLength) {
+							break;
+						}
+
+						const metadataChunk = buffer.subarray(offset, offset + pendingMetadataLength);
+						offset += pendingMetadataLength;
+						bytesUntilMetadata = metaInt;
+						pendingMetadataLength = -1;
+						const parsed = extractTrackMetadataFromIcyMetadata(
+							new TextDecoder('iso-8859-1').decode(metadataChunk)
+						);
+						if (parsed) {
+							applyTrackMetadata(parsed.artist, parsed.title, monitorKey);
+						}
+					}
+				}
+
+				buffer = offset > 0 ? buffer.subarray(offset) : buffer;
+			}
+		} catch (error) {
+			if (!(error instanceof DOMException && error.name === 'AbortError')) {
+				console.debug('ICY metadata monitor unavailable', error);
+			}
+		} finally {
+			if (metadataMonitorController === controller) {
+				metadataMonitorController = null;
+			}
+		}
+	}
+
 	async function getHlsClass() {
 		if (hlsClass) {
 			return hlsClass;
@@ -547,6 +674,7 @@
 				const cleanup = () => {
 					player.off(Hls.Events.MEDIA_ATTACHED, handleMediaAttached);
 					player.off(Hls.Events.MANIFEST_PARSED, handleManifestParsed);
+					player.off(Hls.Events.FRAG_PARSING_METADATA, handleFragParsingMetadata);
 					player.off(Hls.Events.ERROR, handleError);
 					media.removeEventListener('canplay', handleCanPlay);
 					media.removeEventListener('loadedmetadata', handleCanPlay);
@@ -576,6 +704,22 @@
 					finish(resolve);
 				};
 
+				const handleFragParsingMetadata = (
+					_event: string,
+					data: { samples?: Array<{ data?: Uint8Array }> }
+				) => {
+					for (const sample of data.samples ?? []) {
+						if (!sample.data) {
+							continue;
+						}
+
+						const parsed = extractTrackMetadataFromId3(sample.data);
+						if (parsed) {
+							applyTrackMetadata(parsed.artist, parsed.title);
+						}
+					}
+				};
+
 				const handleError = (
 					_event: string,
 					data: { fatal: boolean; details?: string; type?: string }
@@ -591,6 +735,7 @@
 
 				player.on(Hls.Events.MEDIA_ATTACHED, handleMediaAttached);
 				player.on(Hls.Events.MANIFEST_PARSED, handleManifestParsed);
+				player.on(Hls.Events.FRAG_PARSING_METADATA, handleFragParsingMetadata);
 				player.on(Hls.Events.ERROR, handleError);
 				media.addEventListener('canplay', handleCanPlay);
 				media.addEventListener('loadedmetadata', handleCanPlay);
@@ -621,6 +766,9 @@
 		sourcePreparationKey = preparationKey;
 		sourcePreparationPromise = (async () => {
 			if (!station) {
+				stopTrackMetadataMonitor();
+				currentTrackArtist = '';
+				currentTrackTitle = '';
 				audioElement.pause();
 				destroyHlsPlayer();
 				if (loadedStationId || audioElement.getAttribute('src')) {
@@ -641,6 +789,9 @@
 			}
 
 			audioElement.pause();
+			stopTrackMetadataMonitor();
+			currentTrackArtist = '';
+			currentTrackTitle = '';
 			destroyHlsPlayer();
 			audioElement.removeAttribute('src');
 
@@ -650,6 +801,8 @@
 				audioElement.src = nextStreamUrl;
 				audioElement.load();
 			}
+
+			void startIcyMetadataMonitor(station, nextStreamUrl);
 
 			audioElement.currentTime = 0;
 			loadedStationId = station.id;
@@ -912,21 +1065,19 @@
 		const extractMetadata = () => {
 			const metadata = (element as any)?.metadata;
 			if (metadata) {
-				currentTrackTitle = metadata.title || '';
-				currentTrackArtist = metadata.artist || '';
-				return;
+				applyTrackMetadata(metadata.artist || '', metadata.title || '');
 			}
 
-			// Try to extract from text tracks
 			for (let i = 0; i < element.textTracks.length; i++) {
 				const track = element.textTracks[i];
 				if (track.kind === 'metadata' && track.cues) {
 					for (let j = 0; j < track.cues.length; j++) {
 						const cue = track.cues[j];
-						const data = (cue as any)?.data;
-						if (data) {
-							currentTrackTitle = data.title || '';
-							currentTrackArtist = data.artist || '';
+						const parsed = extractTrackMetadataFromCueValue(
+							(cue as any)?.value ?? (cue as any)?.data
+						);
+						if (parsed) {
+							applyTrackMetadata(parsed.artist, parsed.title);
 							return;
 						}
 					}
