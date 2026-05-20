@@ -1889,6 +1889,8 @@
 		display: grid;
 		place-items: center;
 		flex-shrink: 0;
+		font-size: 1.3rem;
+		line-height: 1;
 	}
 
 	.search-toggle.active {
