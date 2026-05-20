@@ -203,6 +203,6 @@ export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
 		version: '0.0.5',
 		label: 'session start',
-		fixes: ['baseline before this session of fixes and curated sources']
+		fixes: ['logs added - hi there curious person (づ ￣ ³￣)づ ♥']
 	}
 ];
