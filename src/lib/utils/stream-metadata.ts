@@ -6,9 +6,61 @@ export type TrackMetadata = {
 const TITLE_FRAME_IDS = new Set(['TIT2', 'TT2', 'TITLE']);
 const ARTIST_FRAME_IDS = new Set(['TPE1', 'TP1', 'ARTIST']);
 const DELIMITERS = [' - ', ' – ', ' — ', ' | ', ': '];
+const MOJIBAKE_PATTERN = /[ÃÂãâåæçèéêëìíîïðñòóôõöøùúûüýþÿ]/;
+const NON_LATIN_PATTERN = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/;
+const WINDOWS_1252_BYTES = new Map<string, number>([
+	['€', 0x80],
+	['‚', 0x82],
+	['ƒ', 0x83],
+	['„', 0x84],
+	['…', 0x85],
+	['†', 0x86],
+	['‡', 0x87],
+	['ˆ', 0x88],
+	['‰', 0x89],
+	['Š', 0x8a],
+	['‹', 0x8b],
+	['Œ', 0x8c],
+	['Ž', 0x8e],
+	['‘', 0x91],
+	['’', 0x92],
+	['“', 0x93],
+	['”', 0x94],
+	['•', 0x95],
+	['–', 0x96],
+	['—', 0x97],
+	['˜', 0x98],
+	['™', 0x99],
+	['š', 0x9a],
+	['›', 0x9b],
+	['œ', 0x9c],
+	['ž', 0x9e],
+	['Ÿ', 0x9f]
+]);
 
 function decodeLatin1(bytes: Uint8Array) {
 	return new TextDecoder('iso-8859-1').decode(bytes);
+}
+
+function encodeWindows1252(value: string) {
+	const bytes: number[] = [];
+
+	for (const char of value) {
+		const codePoint = char.codePointAt(0) ?? 0;
+		if (codePoint <= 0xff) {
+			bytes.push(codePoint);
+			continue;
+		}
+
+		const mappedByte = WINDOWS_1252_BYTES.get(char);
+		if (mappedByte === undefined) {
+			return null;
+		}
+
+		bytes.push(mappedByte);
+	}
+
+	return new Uint8Array(bytes);
 }
 
 function decodeUtf16(bytes: Uint8Array, littleEndian?: boolean) {
@@ -50,8 +102,33 @@ function decodeTextPayload(bytes: Uint8Array) {
 	}
 }
 
-function sanitizeMetadataText(value: string) {
-	return value.replace(/\0/g, '').replace(/\s+/g, ' ').trim();
+function attemptUtf8Repair(value: string) {
+	if (!MOJIBAKE_PATTERN.test(value) || NON_LATIN_PATTERN.test(value)) {
+		return value;
+	}
+
+	try {
+		const bytes = encodeWindows1252(value);
+		if (!bytes) {
+			return value;
+		}
+
+		const repaired = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+		if (!repaired.trim()) {
+			return value;
+		}
+
+		const repairedLooksBetter =
+			NON_LATIN_PATTERN.test(repaired) ||
+			(MOJIBAKE_PATTERN.test(value) && !MOJIBAKE_PATTERN.test(repaired));
+		return repairedLooksBetter ? repaired : value;
+	} catch {
+		return value;
+	}
+}
+
+export function sanitizeMetadataText(value: string) {
+	return attemptUtf8Repair(value).replace(/\0/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function splitCombinedTitle(value: string): TrackMetadata {

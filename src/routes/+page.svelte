@@ -9,7 +9,8 @@
 	import {
 		extractTrackMetadataFromCueValue,
 		extractTrackMetadataFromIcyMetadata,
-		extractTrackMetadataFromId3
+		extractTrackMetadataFromId3,
+		sanitizeMetadataText
 	} from '$lib/utils/stream-metadata';
 	import { preferSecureUrl } from '$lib/utils/url-security';
 
@@ -556,8 +557,8 @@
 			return;
 		}
 
-		const artist = nextArtist.trim();
-		const title = nextTitle.trim();
+		const artist = sanitizeMetadataText(nextArtist);
+		const title = sanitizeMetadataText(nextTitle);
 		if (!artist && !title) {
 			return;
 		}

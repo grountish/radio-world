@@ -72,4 +72,15 @@ describe('stream metadata helpers', () => {
 			title: 'Midnight In A Perfect World'
 		});
 	});
+
+	it('repairs mojibake when UTF-8 track metadata was decoded as latin1', () => {
+		expect(
+			extractTrackMetadataFromIcyMetadata(
+				"StreamTitle='Eiichi Ohtaki - é›¨ã®ã‚¦ã‚§ãƒ³ã‚ºãƒ‡ã‚¤ - Ameno Wednesday';"
+			)
+		).toEqual({
+			artist: 'Eiichi Ohtaki',
+			title: '雨のウェンズデイ - Ameno Wednesday'
+		});
+	});
 });
