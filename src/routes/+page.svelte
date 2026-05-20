@@ -460,6 +460,11 @@
 		});
 	}
 
+	function searchByTag(tag: string) {
+		query = tag;
+		searchExpanded = true;
+	}
+
 	function handleSearchBlur() {
 		if (query.trim().length === 0) {
 			searchExpanded = false;
@@ -1511,7 +1516,7 @@
 						{#if spotlight.tags.length > 0}
 							<div class="tag-list">
 								{#each spotlight.tags.slice(0, 5) as tag (tag)}
-									<span>{tag}</span>
+									<button type="button" onclick={() => searchByTag(tag)}>{tag}</button>
 								{/each}
 							</div>
 						{/if}
@@ -2025,12 +2030,22 @@
 		margin: 1rem 0;
 	}
 
-	.tag-list span {
+	.tag-list button {
 		padding: 0;
+		border: none;
 		background: transparent;
 		color: var(--orange);
+		font: inherit;
 		font-size: 0.72rem;
 		text-transform: lowercase;
+		cursor: pointer;
+		opacity: 0.75;
+		transition: opacity 0.15s ease;
+	}
+
+	.tag-list button:hover,
+	.tag-list button:focus-visible {
+		opacity: 1;
 	}
 
 	.compact-station-row,

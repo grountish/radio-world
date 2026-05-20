@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.28';
+export const APP_VERSION = '0.0.29';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,16 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.28',
+		version: '0.0.29',
 		label: 'current',
+		fixes: [
+			'made the station tags clickable so tapping one searches and filters the globe by that tag',
+			'brightened the tags on hover and focus to signal they are interactive'
+		]
+	},
+	{
+		version: '0.0.28',
+		label: 'previous',
 		fixes: [
 			'fixed the live globe rotation readout so it tracks the camera orbit angle in real time instead of a static value',
 			'replaced the theme toggle flower glyph with an inline SVG so it spins perfectly in place without drifting off center',
