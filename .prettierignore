@@ -7,3 +7,6 @@ bun.lockb
 
 # Miscellaneous
 /static/
+
+# Generated offline station snapshot (run `pnpm snapshot:update` to regenerate)
+/src/lib/server/data/stations-snapshot.json

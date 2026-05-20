@@ -1,40 +1,28 @@
 import { APP_USER_AGENT } from '$lib/config/app-version';
 import type { RadioStation } from '$lib/types/radio';
 import { getCuratedStations } from '$lib/server/curated-stations';
-import { preferSecureUrl } from '$lib/utils/url-security';
+import {
+	CURATED_SOURCES_LABEL,
+	RADIO_BROWSER_SOURCE_LABEL,
+	loadStationCatalog,
+	mergeStations
+} from '$lib/server/station-source';
+import type { RadioStationSnapshot } from '$lib/server/station-source';
+import offlineSnapshot from '$lib/server/data/stations-snapshot.json';
 
-const RADIO_BROWSER_ENDPOINT = 'https://de1.api.radio-browser.info/json/stations/search';
-const CURATED_SOURCES_LABEL = 'curated: nts.live';
-const PAGE_SIZE = 5000;
 const CACHE_TTL_MS = 30 * 60 * 1000;
+// When we are forced onto the committed snapshot (live source unreachable on a
+// cold cache), retry the live source again soon instead of serving stale data
+// for a full TTL.
+const SNAPSHOT_FALLBACK_TTL_MS = 5 * 60 * 1000;
+const SNAPSHOT_SOURCE_LABEL = 'offline snapshot fallback';
 const STREAM_VALIDATION_TTL_MS = 2 * 60 * 60 * 1000;
 const STREAM_VALIDATION_TIMEOUT_MS = 4500;
 const STREAM_VALIDATION_CONCURRENCY = 24;
 const STREAM_VALIDATION_CANDIDATE_LIMIT = 2500;
 
-type RawStation = {
-	stationuuid?: string;
-	name?: string | null;
-	url?: string | null;
-	url_resolved?: string | null;
-	homepage?: string | null;
-	favicon?: string | null;
-	tags?: string | null;
-	country?: string | null;
-	countrycode?: string | null;
-	language?: string | null;
-	codec?: string | null;
-	bitrate?: number | string | null;
-	votes?: number | string | null;
-	geo_lat?: number | string | null;
-	geo_long?: number | string | null;
-};
-
-export type RadioStationSnapshot = {
-	stations: RadioStation[];
-	updatedAt: string;
-	source: string;
-};
+export type { RadioStationSnapshot } from '$lib/server/station-source';
+export { normalizeStation } from '$lib/server/station-source';
 
 const cache: {
 	expiresAt: number;
@@ -62,88 +50,6 @@ const streamValidationCache = new Map<
 	}
 >();
 
-function safeText(value: unknown): string {
-	return typeof value === 'string' ? value.trim() : '';
-}
-
-function parseNumber(value: unknown): number | null {
-	if (typeof value === 'number' && Number.isFinite(value)) {
-		return value;
-	}
-
-	if (typeof value === 'string' && value.trim() !== '') {
-		const parsed = Number(value);
-		return Number.isFinite(parsed) ? parsed : null;
-	}
-
-	return null;
-}
-
-function safeUrl(value: unknown): string {
-	const input = safeText(value);
-
-	if (!input) {
-		return '';
-	}
-
-	try {
-		const url = new URL(input);
-		return url.protocol === 'http:' || url.protocol === 'https:' ? preferSecureUrl(url.toString()) : '';
-	} catch {
-		return '';
-	}
-}
-
-function hasEphemeralAuthParams(value: string): boolean {
-	try {
-		const url = new URL(value);
-		const ephemeralParams = ['zt', 'token', 'auth', 'expires', 'exp', 'signature', 'sig'];
-		return ephemeralParams.some((key) => url.searchParams.has(key));
-	} catch {
-		return false;
-	}
-}
-
-function pickStreamUrl(raw: RawStation): string {
-	const directUrl = safeUrl(raw.url);
-	const resolvedUrl = safeUrl(raw.url_resolved);
-
-	if (resolvedUrl && directUrl && hasEphemeralAuthParams(resolvedUrl)) {
-		return directUrl;
-	}
-
-	return resolvedUrl || directUrl;
-}
-
-function parseTags(value: unknown): string[] {
-	return [
-		...new Set(
-			safeText(value)
-				.split(',')
-				.map((tag) => tag.trim())
-				.filter(Boolean)
-		)
-	].slice(0, 12);
-}
-
-function mergeStations(primary: RadioStation[], secondary: RadioStation[]): RadioStation[] {
-	const merged = [...primary];
-	const seenIds = new Set(primary.map((station) => station.id));
-	const seenStreamUrls = new Set(primary.map((station) => station.streamUrl));
-
-	for (const station of secondary) {
-		if (seenIds.has(station.id) || seenStreamUrls.has(station.streamUrl)) {
-			continue;
-		}
-
-		seenIds.add(station.id);
-		seenStreamUrls.add(station.streamUrl);
-		merged.push(station);
-	}
-
-	return merged;
-}
-
 export function isRejectedContentType(contentType: string): boolean {
 	const normalized = contentType.toLowerCase();
 
@@ -158,7 +64,9 @@ export function isRejectedContentType(contentType: string): boolean {
 }
 
 function isHlsResponse(streamUrl: string, contentType: string): boolean {
-	return isHlsStreamUrl(streamUrl) || contentType.toLowerCase().includes('application/vnd.apple.mpegurl');
+	return (
+		isHlsStreamUrl(streamUrl) || contentType.toLowerCase().includes('application/vnd.apple.mpegurl')
+	);
 }
 
 function hasCorsSupport(headers: Headers): boolean {
@@ -235,9 +143,7 @@ async function verifyStationBatch(
 	}
 
 	await Promise.all(
-		Array.from({ length: Math.min(STREAM_VALIDATION_CONCURRENCY, stations.length) }, () =>
-			worker()
-		)
+		Array.from({ length: Math.min(STREAM_VALIDATION_CONCURRENCY, stations.length) }, () => worker())
 	);
 
 	return stations.filter((_, index) => verified[index]);
@@ -255,7 +161,10 @@ function filterInvalidStations(
 
 export async function verifyStations(stations: RadioStation[]): Promise<RadioStation[]> {
 	const verifiedStations = await verifyStationBatch(stations);
-	const baseline = verifiedStations.length > 0 ? verifiedStations : stations.slice(0, Math.min(stations.length, 250));
+	const baseline =
+		verifiedStations.length > 0
+			? verifiedStations
+			: stations.slice(0, Math.min(stations.length, 250));
 	return mergeStations(baseline, getCuratedStations());
 }
 
@@ -309,95 +218,18 @@ function scheduleStationValidation(stations: RadioStation[], updatedAt: string) 
 		});
 }
 
-export function normalizeStation(raw: RawStation): RadioStation | null {
-	const id = safeText(raw.stationuuid);
-	const lat = parseNumber(raw.geo_lat);
-	const lon = parseNumber(raw.geo_long);
-	const streamUrl = pickStreamUrl(raw);
-
-	if (!id || lat === null || lon === null || !streamUrl) {
-		return null;
-	}
-
-	if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-		return null;
-	}
-
+/**
+ * Builds a snapshot from the committed offline catalog. This is the guaranteed
+ * floor: it ships with the build, so it is available even on a cold cache while
+ * the live Radio Browser source is unreachable. Curated stations are merged in
+ * so they survive even if the snapshot predates them.
+ */
+function getOfflineSnapshot(): RadioStationSnapshot {
+	const stations = (offlineSnapshot.stations ?? []) as RadioStation[];
 	return {
-		id,
-		name: safeText(raw.name) || 'Untitled Station',
-		country: safeText(raw.country) || 'Unknown',
-		countryCode: safeText(raw.countrycode).toUpperCase(),
-		language: safeText(raw.language) || 'Unknown',
-		codec: safeText(raw.codec).toUpperCase() || 'Unknown',
-		bitrate: parseNumber(raw.bitrate),
-		votes: parseNumber(raw.votes) ?? 0,
-		homepage: safeUrl(raw.homepage),
-		favicon: safeUrl(raw.favicon),
-		streamUrl,
-		lat,
-		lon,
-		tags: parseTags(raw.tags)
-	};
-}
-
-async function fetchStationPage(offset: number): Promise<RawStation[]> {
-	const url = new URL(RADIO_BROWSER_ENDPOINT);
-	url.searchParams.set('hidebroken', 'true');
-	url.searchParams.set('has_geo_info', 'true');
-	url.searchParams.set('order', 'votes');
-	url.searchParams.set('reverse', 'true');
-	url.searchParams.set('limit', String(PAGE_SIZE));
-	url.searchParams.set('offset', String(offset));
-
-	const response = await fetch(url, {
-		headers: {
-			'user-agent': APP_USER_AGENT
-		}
-	});
-
-	if (!response.ok) {
-		throw new Error(`Radio Browser responded with ${response.status}`);
-	}
-
-	const payload = (await response.json()) as unknown;
-
-	if (!Array.isArray(payload)) {
-		throw new Error('Radio Browser returned an invalid payload');
-	}
-
-	return payload as RawStation[];
-}
-
-async function loadStations(): Promise<RadioStationSnapshot> {
-	const stations: RadioStation[] = [];
-	const seen = new Set<string>();
-
-	for (let offset = 0; ; offset += PAGE_SIZE) {
-		const page = await fetchStationPage(offset);
-
-		for (const station of page) {
-			const normalized = normalizeStation(station);
-
-			if (!normalized || seen.has(normalized.id)) {
-				continue;
-			}
-
-			seen.add(normalized.id);
-			stations.push(normalized);
-		}
-
-		if (page.length < PAGE_SIZE) {
-			break;
-		}
-	}
-
-	const mergedStations = mergeStations(stations, getCuratedStations());
-
-	return {
-		stations: mergedStations,
-		updatedAt: new Date().toISOString(),
-		source: `${RADIO_BROWSER_ENDPOINT} + ${CURATED_SOURCES_LABEL}`
+		stations: mergeStations(stations, getCuratedStations()),
+		updatedAt: offlineSnapshot.updatedAt ?? new Date(0).toISOString(),
+		source: `${SNAPSHOT_SOURCE_LABEL} (generated ${offlineSnapshot.updatedAt ?? 'unknown'})`
 	};
 }
 
@@ -405,11 +237,14 @@ export async function getRadioStations(forceRefresh = false): Promise<RadioStati
 	const now = Date.now();
 
 	if (!forceRefresh && cache.stations.length > 0 && cache.expiresAt > now) {
-		scheduleStationValidation(cache.sourceStations.length > 0 ? cache.sourceStations : cache.stations, cache.updatedAt);
+		scheduleStationValidation(
+			cache.sourceStations.length > 0 ? cache.sourceStations : cache.stations,
+			cache.updatedAt
+		);
 		return {
 			stations: cache.stations,
 			updatedAt: cache.updatedAt,
-			source: `${RADIO_BROWSER_ENDPOINT} + ${CURATED_SOURCES_LABEL}`
+			source: `${RADIO_BROWSER_SOURCE_LABEL} + ${CURATED_SOURCES_LABEL}`
 		};
 	}
 
@@ -417,7 +252,7 @@ export async function getRadioStations(forceRefresh = false): Promise<RadioStati
 		return cache.pending;
 	}
 
-	cache.pending = loadStations()
+	cache.pending = loadStationCatalog()
 		.then((snapshot) => {
 			cache.sourceStations = snapshot.stations;
 			cache.stations = snapshot.stations;
@@ -428,15 +263,26 @@ export async function getRadioStations(forceRefresh = false): Promise<RadioStati
 			return snapshot;
 		})
 		.catch((error: unknown) => {
+			// Serve a previously fetched catalog if we still have one in memory.
 			if (cache.stations.length > 0) {
 				return {
 					stations: cache.stations,
 					updatedAt: cache.updatedAt,
-					source: `${RADIO_BROWSER_ENDPOINT} + ${CURATED_SOURCES_LABEL}`
+					source: `${RADIO_BROWSER_SOURCE_LABEL} + ${CURATED_SOURCES_LABEL}`
 				};
 			}
 
-			throw error;
+			// Cold cache and the live source is down: fall back to the committed
+			// snapshot instead of failing. Seed the cache with a short TTL so the
+			// next request retries the live source soon.
+			console.warn('Live station load failed; serving committed offline snapshot', error);
+			const fallback = getOfflineSnapshot();
+			cache.sourceStations = fallback.stations;
+			cache.stations = fallback.stations;
+			cache.updatedAt = fallback.updatedAt;
+			cache.validatedUpdatedAt = '';
+			cache.expiresAt = Date.now() + SNAPSHOT_FALLBACK_TTL_MS;
+			return fallback;
 		})
 		.finally(() => {
 			cache.pending = null;

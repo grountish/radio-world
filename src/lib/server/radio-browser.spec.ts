@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { isRejectedContentType, normalizeStation, verifyStations } from './radio-browser';
+import {
+	getRadioStations,
+	isRejectedContentType,
+	normalizeStation,
+	verifyStations
+} from './radio-browser';
 import { getCuratedStations } from './curated-stations';
 
 describe('normalizeStation', () => {
@@ -329,6 +334,26 @@ describe('curated stations', () => {
 					streamUrl: 'https://stream-test.hkcr.live/hls/main.m3u8'
 				})
 			])
+		);
+	});
+});
+
+describe('offline snapshot fallback', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('serves the committed snapshot when the live source is unreachable on a cold cache', async () => {
+		vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'));
+
+		const snapshot = await getRadioStations(true);
+
+		// We never throw a 502 to the caller — the committed catalog is the floor.
+		expect(snapshot.stations.length).toBeGreaterThan(0);
+		expect(snapshot.source).toContain('offline snapshot fallback');
+		// Curated stations are always merged in, even on the fallback path.
+		expect(snapshot.stations).toEqual(
+			expect.arrayContaining([expect.objectContaining({ id: 'nts-1' })])
 		);
 	});
 });

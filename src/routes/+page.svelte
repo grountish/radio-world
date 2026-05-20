@@ -82,7 +82,9 @@
 		`--accent: ${selectedTheme.accent}; --accent-rgb: ${selectedTheme.accentRgb};`
 	);
 	const currentTrackSearchUrl = $derived.by(() => {
-		const queryParts = [currentTrackArtist, currentTrackTitle].map((value) => value.trim()).filter(Boolean);
+		const queryParts = [currentTrackArtist, currentTrackTitle]
+			.map((value) => value.trim())
+			.filter(Boolean);
 		if (queryParts.length === 0) {
 			return '';
 		}
@@ -1570,18 +1572,39 @@
 						</div>
 						{#if !isCompactViewport || instructionsOpen}
 							<dl class="hint-grid">
-								<dt>drag</dt>
-								<dd>orbit the globe</dd>
-								<dt>scroll</dt>
-								<dd>zoom in / out</dd>
-								<dt>hover</dt>
-								<dd>preview stations at that location</dd>
-								<dt>click</dt>
-								<dd>select a station and start listening</dd>
-								<dt>right-click</dt>
-								<dd>pin the cluster list so you can browse it</dd>
-								<dt>pin + right-click</dt>
-								<dd>switch pinned cluster to another location</dd>
+								{#if isCompactViewport}
+									<dt>drag</dt>
+									<dd>orbit the globe</dd>
+									<dt>pinch</dt>
+									<dd>zoom in / out</dd>
+									<dt>tap</dt>
+									<dd>open nearby stations or start listening</dd>
+									<dt>press + hold</dt>
+									<dd>pin a cluster so you can browse it</dd>
+									<dt>pinned + tap</dt>
+									<dd>move the pinned list to another cluster</dd>
+									<dt>top controls</dt>
+									<dd>search, hd filter, favorites, stats, version log, theme</dd>
+									<dt>player</dt>
+									<dd>appears after you pick a station</dd>
+								{:else}
+									<dt>drag</dt>
+									<dd>orbit the globe</dd>
+									<dt>scroll</dt>
+									<dd>zoom in / out</dd>
+									<dt>hover</dt>
+									<dd>preview nearby stations</dd>
+									<dt>click</dt>
+									<dd>select a station or choose one from the cluster list</dd>
+									<dt>right-click</dt>
+									<dd>pin a cluster list so you can browse it</dd>
+									<dt>pinned + click</dt>
+									<dd>move the pinned list to another cluster</dd>
+									<dt>top controls</dt>
+									<dd>search, hd filter, favorites, stats, version log, theme</dd>
+									<dt>player</dt>
+									<dd>appears after you pick a station</dd>
+								{/if}
 							</dl>
 						{/if}
 					</div>
@@ -1883,31 +1906,30 @@
 		font-size: 0.78rem;
 	}
 
-		.track-info {
-			margin: 0.6rem 0 0;
-			padding: 0.5rem 0;
-			border-top: 1px solid rgba(var(--accent-rgb), 0.2);
-			border-bottom: 1px solid rgba(var(--accent-rgb), 0.2);
-		}
+	.track-info {
+		margin: 0.6rem 0 0;
+		padding: 0.5rem 0;
+		border-top: 1px solid rgba(var(--accent-rgb), 0.2);
+		border-bottom: 1px solid rgba(var(--accent-rgb), 0.2);
+	}
 
-		.track-artist,
-		.track-title {
-			font-family:
-				ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono',
-				'Roboto Mono', 'Noto Sans Mono CJK SC', 'Noto Sans Mono CJK TC', 'Noto Sans Mono CJK JP',
-				'Noto Sans Mono', 'Noto Sans CJK SC', 'Noto Sans CJK TC', 'Noto Sans CJK JP',
-				'PingFang SC', 'PingFang TC', 'Hiragino Sans', 'Yu Gothic', 'Microsoft YaHei', monospace,
-				sans-serif;
-			letter-spacing: 0;
-			text-transform: none;
-		}
+	.track-artist,
+	.track-title {
+		font-family:
+			ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono',
+			'Roboto Mono', 'Noto Sans Mono CJK SC', 'Noto Sans Mono CJK TC', 'Noto Sans Mono CJK JP',
+			'Noto Sans Mono', 'Noto Sans CJK SC', 'Noto Sans CJK TC', 'Noto Sans CJK JP', 'PingFang SC',
+			'PingFang TC', 'Hiragino Sans', 'Yu Gothic', 'Microsoft YaHei', monospace, sans-serif;
+		letter-spacing: 0;
+		text-transform: none;
+	}
 
-		.track-artist {
-			margin: 0;
-			color: rgba(255, 255, 255, 0.6);
-			font-size: 0.72rem;
-			line-height: 1.4;
-		}
+	.track-artist {
+		margin: 0;
+		color: rgba(255, 255, 255, 0.6);
+		font-size: 0.72rem;
+		line-height: 1.4;
+	}
 
 	.track-title {
 		margin: 0.2rem 0 0;
@@ -1921,7 +1943,9 @@
 		color: inherit;
 		text-decoration: none;
 		border-bottom: 1px solid transparent;
-		transition: border-color 150ms ease, opacity 150ms ease;
+		transition:
+			border-color 150ms ease,
+			opacity 150ms ease;
 	}
 
 	.track-title a:hover,
