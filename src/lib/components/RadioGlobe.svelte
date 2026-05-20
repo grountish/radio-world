@@ -16,6 +16,7 @@
 		onhover?: (station: RadioStation | null) => void;
 		onready?: () => void;
 		oniniterror?: (message: string) => void;
+		onRotate?: (rotation: number) => void;
 		apiResponseTime?: number;
 		dataAge?: string;
 		apiError?: string;
@@ -40,6 +41,7 @@
 		onhover = undefined,
 		onready = undefined,
 		oniniterror = undefined,
+		onRotate = undefined,
 		apiResponseTime = 0,
 		dataAge = '',
 		apiError = '',
@@ -129,6 +131,7 @@
 	let meltBordersGroup: THREE.Group | null = null;
 	let meltMaterial: THREE.ShaderMaterial | null = null;
 	let meltStartTime = 0;
+	let lastSync = 0;
 
 	function applyThemeAccent() {
 		const accent = new THREE.Color(themeAccent);
@@ -997,6 +1000,10 @@
 			frameCount = 0;
 			lastFrameTime = now;
 		}
+		const now2 = performance.now();
+		if (now2 - lastSync >= 500) {
+			onRotate?.(controls?.getAzimuthalAngle() ?? 0); // horizontal orbit (radians)
+		}
 
 		animationFrame = window.requestAnimationFrame(animate);
 		if (autoFocusPending && !pointerIsActive) {
@@ -1376,6 +1383,7 @@
 						<span class="debug-label">fps:</span>
 						<span class="debug-value">{debugStats.fps}</span>
 					</div>
+
 					<div class="debug-row">
 						<span class="debug-label">stations:</span>
 						<span class="debug-value">{debugStats.visibleStations}</span>

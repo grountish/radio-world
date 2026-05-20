@@ -68,6 +68,8 @@
 	let currentTrackArtist = $state('');
 	let currentTrackTitle = $state('');
 	let meltActive = $state(false);
+	let displayRotation = $state(0);
+
 	const initialLoadingAnimationMs = 650;
 	const loadingScrambleLoopMs = 1300;
 	const hasActiveFilters = $derived(query.trim().length > 0 || country !== 'all' || hiQualityOnly);
@@ -1125,6 +1127,20 @@
 	});
 </script>
 
+{#snippet flowerSvg()}
+	<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+		<ellipse cx="12" cy="5" rx="2" ry="4.2" transform="rotate(0 12 12)" />
+		<ellipse cx="12" cy="5" rx="2" ry="4.2" transform="rotate(45 12 12)" />
+		<ellipse cx="12" cy="5" rx="2" ry="4.2" transform="rotate(90 12 12)" />
+		<ellipse cx="12" cy="5" rx="2" ry="4.2" transform="rotate(135 12 12)" />
+		<ellipse cx="12" cy="5" rx="2" ry="4.2" transform="rotate(180 12 12)" />
+		<ellipse cx="12" cy="5" rx="2" ry="4.2" transform="rotate(225 12 12)" />
+		<ellipse cx="12" cy="5" rx="2" ry="4.2" transform="rotate(270 12 12)" />
+		<ellipse cx="12" cy="5" rx="2" ry="4.2" transform="rotate(315 12 12)" />
+		<circle cx="12" cy="12" r="2.6" />
+	</svg>
+{/snippet}
+
 <div
 	class="page-shell"
 	style={themeCssVars}
@@ -1154,6 +1170,7 @@
 				{meltActive}
 				onready={handleGlobeReady}
 				oniniterror={handleGlobeInitError}
+				onRotate={(r) => (displayRotation = r)}
 			/>
 		{/if}
 
@@ -1247,7 +1264,7 @@
 					aria-label={debugOpen ? 'Collapse stats panel' : 'Expand stats panel'}
 					title="Stats"
 				>
-					<span aria-hidden="true">▥</span>
+					<span class="icon-glyph" aria-hidden="true">▥</span>
 				</button>
 				<button
 					type="button"
@@ -1257,7 +1274,7 @@
 					aria-label={versionLogOpen ? 'Collapse version log panel' : 'Expand version log panel'}
 					title="Version Log"
 				>
-					<span aria-hidden="true">◷</span>
+					<span class="icon-glyph" aria-hidden="true">◷</span>
 				</button>
 				<button
 					type="button"
@@ -1268,20 +1285,31 @@
 					title="Theme"
 				>
 					<span
+						class="theme-toggle-swatch-slim"
+						aria-hidden="true"
+						style={`--theme-swatch: ${selectedTheme.accent}; transform: rotate(${displayRotation * 20}rad);`}
+					>
+						{@render flowerSvg()}
+					</span>
+					<!-- <span
 						class="theme-toggle-swatch"
 						aria-hidden="true"
 						style={`--theme-swatch: ${selectedTheme.accent};`}
-					></span>
+					></span> -->
 				</button>
 			</div>
 			{#if favoritesOpen}
 				<div class="fav-list">
 					{#if favoriteStations.length === 0}
-						<p class="fav-empty">no favorites yet</p>
+						<p class="❊fav-empty">no favorites yet</p>
 					{:else}
 						{#each favoriteStations as station (station.id)}
 							<button type="button" class="fav-item" onclick={() => pickFavoriteStation(station)}>
-								<span class="fav-name">{station.name}</span>
+								{#if selectedStation?.id === station.id}<span class="fav-name bold"
+										>{station.name}</span
+									>
+								{:else}<span class="fav-name">{station.name}</span>
+								{/if}
 								{#if station.country}<span class="fav-country">{station.country}</span>{/if}
 							</button>
 						{/each}
@@ -1303,7 +1331,9 @@
 								class="theme-swatch"
 								aria-hidden="true"
 								style={`--theme-swatch: ${theme.accent};`}
-							></span>
+							>
+								{@render flowerSvg()}
+							</span>
 						</button>
 					{/each}
 				</div>
@@ -1423,27 +1453,28 @@
 								<ScrambleText as="p" className="station-name" text={spotlightName} />
 								<ScrambleText as="p" className="station-subtitle" text={spotlightSubtitle} />
 							</div>
-							<button
-								type="button"
-								class="fav-button"
-								class:is-faved={favoriteIds.has(spotlight.id)}
-								onclick={() => toggleFavorite(spotlight.id)}
-								aria-label={favoriteIds.has(spotlight.id)
-									? 'Remove from favorites'
-									: 'Add to favorites'}
-							>
-								{favoriteIds.has(spotlight.id) ? '♥' : '♡'}
-							</button>
-							{#if spotlight.favicon && !failedFavicons.has(spotlight.id)}
-								<img
-									alt=""
-									class="station-icon"
-									src={spotlight.favicon}
-									loading="lazy"
-									onerror={() => markFaviconFailed(spotlight.id)}
-								/>
-							{/if}
-							{#if !spotlight.favicon || failedFavicons.has(spotlight.id)}
+							<div class="fav-and-station-icon">
+								<button
+									type="button"
+									class="fav-button"
+									class:is-faved={favoriteIds.has(spotlight.id)}
+									onclick={() => toggleFavorite(spotlight.id)}
+									aria-label={favoriteIds.has(spotlight.id)
+										? 'Remove from favorites'
+										: 'Add to favorites'}
+								>
+									{favoriteIds.has(spotlight.id) ? '♥' : '♡'}
+								</button>
+								{#if spotlight.favicon && !failedFavicons.has(spotlight.id)}
+									<img
+										alt=""
+										class="station-icon"
+										src={spotlight.favicon}
+										loading="lazy"
+										onerror={() => markFaviconFailed(spotlight.id)}
+									/>
+								{/if}
+								{#if !spotlight.favicon || failedFavicons.has(spotlight.id)}
 								<div
 									class="station-icon-fallback"
 									title={spotlight.name}
@@ -1451,7 +1482,8 @@
 								>
 									{getStationInitials(spotlight.name)}
 								</div>
-							{/if}
+								{/if}
+							</div>
 						</div>
 
 						<ScrambleText as="p" className="coordinates" text={spotlightCoordinates} />
@@ -1739,6 +1771,7 @@
 		align-items: stretch;
 		gap: 0.3rem;
 		padding: 0;
+		width: fit-content;
 	}
 
 	.search-control {
@@ -1961,6 +1994,11 @@
 		object-fit: cover;
 		background: rgba(255, 255, 255, 0.1);
 		filter: grayscale(1) contrast(1.05);
+	}
+	.fav-and-station-icon {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
 	}
 
 	.station-icon-fallback {
@@ -2494,25 +2532,61 @@
 	}
 
 	.icon-toggle-button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		min-width: 2.4rem;
 		padding-inline: 0.45rem;
 		text-align: center;
+	}
+
+	/* Normalize the visual size of the Unicode icon glyphs so they
+	   match each other and the flower swatch. */
+	.icon-glyph {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.05rem;
+		height: 1.05rem;
+		font-size: 1.05rem;
+		line-height: 1;
 	}
 
 	.theme-toggle-button {
 		padding-inline: 0.4rem;
 	}
 
-	.theme-toggle-swatch,
+	/* .theme-toggle-swatch, */
 	.theme-swatch {
-		display: inline-block;
-		width: 0.78rem;
-		margin-top: 5px;
-		height: 0.78rem;
-		border-radius: 999px;
-		background: var(--theme-swatch);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 0.8rem;
+		height: 0.8rem;
+		color: var(--theme-swatch);
 	}
 
+	.theme-swatch svg {
+		display: block;
+		width: 100%;
+		height: 100%;
+	}
+	.theme-toggle-swatch-slim {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.05rem;
+		height: 1.05rem;
+		transform-origin: center center;
+		transition: all 0.9s ease;
+		color: var(--theme-swatch);
+	}
+
+	.theme-toggle-swatch-slim svg {
+		display: block;
+		width: 100%;
+		height: 100%;
+	}
 	.theme-panel {
 		display: flex;
 		align-items: center;
@@ -2544,7 +2618,7 @@
 	}
 
 	.theme-swatch-button.active .theme-swatch {
-		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+		filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.8));
 	}
 
 	.fav-list {
@@ -2587,6 +2661,11 @@
 	.fav-name {
 		text-transform: lowercase;
 		font-weight: 500;
+	}
+
+	.bold {
+		font-weight: bolder;
+		color: var(--orange);
 	}
 
 	.fav-country {

@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.27';
+export const APP_VERSION = '0.0.28';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,18 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.27',
+		version: '0.0.28',
 		label: 'current',
+		fixes: [
+			'fixed the live globe rotation readout so it tracks the camera orbit angle in real time instead of a static value',
+			'replaced the theme toggle flower glyph with an inline SVG so it spins perfectly in place without drifting off center',
+			'gave every theme swatch the same flower SVG shape for a consistent themed look',
+			'normalized the toolbar icon sizes so the stats and clock buttons match the favorites and theme icons'
+		]
+	},
+	{
+		version: '0.0.27',
+		label: 'previous',
 		fixes: [
 			'added Hong Kong Community Radio as a curated station with its verified browser-playable HLS livestream',
 			'kept the curated catalog regression coverage up to date so official hand-picked stations remain pinned in the dataset'
