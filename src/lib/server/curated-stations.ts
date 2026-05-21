@@ -26,6 +26,10 @@ const hkcrFavicon = 'https://hkcr.live/favicon.ico';
 const hongKongLat = 22.3193;
 const hongKongLon = 114.1694;
 
+const j1GoldHomepage = 'https://www.j1fm.tokyo/player/j1gold/';
+const j1GoldFavicon = 'https://www.j1fm.tokyo/favicon.ico';
+const j1TrackInfoUrl = 'https://json.j1fm.tokyo/whatweplay.json';
+
 const curatedStations: RadioStation[] = [
 	{
 		id: 'nts-1',
@@ -138,6 +142,24 @@ const curatedStations: RadioStation[] = [
 		lat: hongKongLat,
 		lon: hongKongLon,
 		tags: ['hkcr', 'curated', 'hongkong', 'community', 'electronic', 'live']
+	},
+	{
+		id: 'j1gold',
+		name: 'J1 Radio Gold',
+		country: 'Japan',
+		countryCode: 'JP',
+		language: 'Japanese',
+		codec: 'MP3',
+		bitrate: 128,
+		votes: 100000,
+		homepage: j1GoldHomepage,
+		favicon: j1GoldFavicon,
+		streamUrl: 'https://jenny.torontocast.com:2000/stream/J1GOLD',
+		lat: tokyoLat,
+		lon: tokyoLon,
+		tags: ['j1', 'curated', 'japan', 'jpop', 'showa', 'gold'],
+		trackInfoUrl: j1TrackInfoUrl,
+		trackInfoChannel: 'J1 GOLD'
 	}
 ];
 

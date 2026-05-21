@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.29';
+export const APP_VERSION = '0.0.30';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,16 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.29',
+		version: '0.0.30',
 		label: 'current',
+		fixes: [
+			'added J1 Radio Gold from Tokyo as a curated station with its browser-playable showa/jpop stream',
+			'wired the J1 whatweplay feed so the player shows live artist and title for the Gold channel'
+		]
+	},
+	{
+		version: '0.0.29',
+		label: 'previous',
 		fixes: [
 			'made the station tags clickable so tapping one searches and filters the globe by that tag',
 			'brightened the tags on hover and focus to signal they are interactive'

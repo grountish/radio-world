@@ -27,6 +27,7 @@
 	let loadingScrambleCycle = $state(0);
 	let query = $state('');
 	let searchExpanded = $state(false);
+	let searchResultsDismissed = $state(false);
 	let country = $state('all');
 	let hiQualityOnly = $state(false);
 	let selectedStation = $state<RadioStation | null>(null);
@@ -73,6 +74,7 @@
 	const initialLoadingAnimationMs = 650;
 	const loadingScrambleLoopMs = 1300;
 	const hasActiveFilters = $derived(query.trim().length > 0 || country !== 'all' || hiQualityOnly);
+	const showSearchPanel = $derived(hasActiveFilters && !searchResultsDismissed);
 	const focusKey = $derived(
 		`${query.trim().toLowerCase()}|${country}|${hiQualityOnly ? '1' : '0'}`
 	);
@@ -454,6 +456,7 @@
 
 	function expandSearch() {
 		searchExpanded = true;
+		searchResultsDismissed = false;
 		requestAnimationFrame(() => {
 			queryInput?.focus();
 			queryInput?.select();
@@ -674,6 +677,55 @@
 		}
 	}
 
+	async function startJsonMetadataMonitor(station: RadioStation) {
+		const feedUrl = station.trackInfoUrl;
+		if (typeof window === 'undefined' || !feedUrl) {
+			return;
+		}
+
+		stopTrackMetadataMonitor();
+		const controller = new AbortController();
+		const monitorKey = `${station.id}|${station.streamUrl}`;
+		metadataMonitorController = controller;
+		metadataMonitorKey = monitorKey;
+
+		const channel = sanitizeMetadataText(station.trackInfoChannel ?? '').toLowerCase();
+
+		const poll = async () => {
+			try {
+				const response = await fetch(feedUrl, { cache: 'no-store', signal: controller.signal });
+				if (!response.ok) {
+					return;
+				}
+
+				const payload = (await response.json()) as { station?: unknown };
+				const entries = Array.isArray(payload?.station)
+					? (payload.station as Array<Record<string, unknown>>)
+					: [];
+				const entry = channel
+					? entries.find(
+							(item) => sanitizeMetadataText(String(item?.name ?? '')).toLowerCase() === channel
+						)
+					: entries[0];
+
+				if (entry) {
+					applyTrackMetadata(String(entry.artist ?? ''), String(entry.title ?? ''), monitorKey);
+				}
+			} catch (error) {
+				if (!(error instanceof DOMException && error.name === 'AbortError')) {
+					console.debug('JSON metadata monitor unavailable', error);
+				}
+			}
+		};
+
+		const intervalId = window.setInterval(() => void poll(), 15000);
+		controller.signal.addEventListener('abort', () => window.clearInterval(intervalId), {
+			once: true
+		});
+
+		await poll();
+	}
+
 	async function getHlsClass() {
 		if (hlsClass) {
 			return hlsClass;
@@ -828,7 +880,11 @@
 				audioElement.load();
 			}
 
-			void startIcyMetadataMonitor(station, nextStreamUrl);
+			if (station.trackInfoUrl) {
+				void startJsonMetadataMonitor(station);
+			} else {
+				void startIcyMetadataMonitor(station, nextStreamUrl);
+			}
 
 			audioElement.currentTime = 0;
 			loadedStationId = station.id;
@@ -1081,6 +1137,13 @@
 		}
 	});
 
+	// When the search/filter changes, surface the results again even if the user
+	// had dismissed the previous result list.
+	$effect(() => {
+		focusKey;
+		searchResultsDismissed = false;
+	});
+
 	$effect(() => {
 		if (!audioElement) {
 			return;
@@ -1198,7 +1261,7 @@
 		{/if}
 
 		<div class="hud hud-top">
-			<div class="filter-row">
+			<div class="filter-row" class:search-expanded={isSearchExpanded}>
 				<div class="search-control" class:expanded={isSearchExpanded}>
 					<button
 						class="ghost-button search-toggle"
@@ -1251,7 +1314,7 @@
 			</div>
 		</div>
 
-		<div class="hud hud-fav-panel">
+		<div class="hud hud-fav-panel" class:search-active={isSearchExpanded}>
 			<div class="panel-toggle-row">
 				<button
 					type="button"
@@ -1383,14 +1446,6 @@
 										<span class="play-icon"></span>
 									{/if}
 								</button>
-								<button
-									class="player-expand"
-									type="button"
-									aria-label={playerExpanded ? 'Collapse player' : 'Expand player'}
-									onclick={() => (playerExpanded = !playerExpanded)}
-								>
-									{playerExpanded ? '▾' : '▸'}
-								</button>
 							</div>
 
 							<ScrambleText
@@ -1399,6 +1454,15 @@
 								text={spotlightName}
 							/>
 
+							<button
+								class="player-expand compact-player-expand"
+								class:active={playerExpanded}
+								type="button"
+								aria-label={playerExpanded ? 'Collapse player' : 'Expand player'}
+								onclick={() => (playerExpanded = !playerExpanded)}
+							>
+								{playerExpanded ? '⇡' : '⇣'}
+							</button>
 							<button
 								type="button"
 								class="fav-button compact-fav-button"
@@ -1420,36 +1484,27 @@
 
 						{#if playerExpanded}
 							<div class="player-main compact-player-panel">
-								<div class="player-topline">
-									<div class="status-row">
-										<span class="live-pill">Live Radio</span>
-										<span>{formatTime(elapsed)}</span>
+								{#if currentTrackTitle || currentTrackArtist}
+									<div class="track-info">
+										{#if currentTrackArtist}
+											<p class="track-artist">{currentTrackArtist}</p>
+										{/if}
+										{#if currentTrackTitle}
+											<p class="track-title">
+												<a
+													href={currentTrackSearchUrl}
+													target="_blank"
+													rel="noreferrer noopener"
+													aria-label={`Search for ${[currentTrackArtist, currentTrackTitle].filter(Boolean).join(' ')}`}
+												>
+													{currentTrackTitle}
+												</a>
+											</p>
+										{/if}
 									</div>
-								</div>
-
-								<div class="progress-rail" aria-hidden="true">
-									<div
-										class="progress-fill"
-										class:buffering={playbackStatus === 'buffering'}
-										class:ready={playbackStatus === 'ready'}
-										class:error={playbackStatus === 'error'}
-									></div>
-								</div>
-
-								<div class="volume-row">
-									<input
-										aria-label="Volume"
-										bind:value={volume}
-										class="volume-slider"
-										max="1"
-										min="0"
-										oninput={(event) =>
-											updateVolume(Number((event.currentTarget as HTMLInputElement).value))}
-										step="0.01"
-										type="range"
-									/>
-									<span>{Math.round(volume * 100)}%</span>
-								</div>
+								{:else}
+									<p class="track-empty">{spotlightSubtitle}</p>
+								{/if}
 							</div>
 						{/if}
 					{:else}
@@ -1480,13 +1535,13 @@
 									/>
 								{/if}
 								{#if !spotlight.favicon || failedFavicons.has(spotlight.id)}
-								<div
-									class="station-icon-fallback"
-									title={spotlight.name}
-									style={`background: ${getStationBg(spotlight.id)};`}
-								>
-									{getStationInitials(spotlight.name)}
-								</div>
+									<div
+										class="station-icon-fallback"
+										title={spotlight.name}
+										style={`background: ${getStationBg(spotlight.id)};`}
+									>
+										{getStationInitials(spotlight.name)}
+									</div>
 								{/if}
 							</div>
 						</div>
@@ -1649,8 +1704,20 @@
 			{/if}
 		</div>
 
-		{#if hasActiveFilters}
+		{#if showSearchPanel}
 			<div class="hud hud-search-panel">
+				<div class="search-panel-header">
+					<span class="search-panel-count">{visibleStations.length} results</span>
+					<button
+						type="button"
+						class="ghost-button search-panel-close"
+						onclick={() => (searchResultsDismissed = true)}
+						aria-label="Close results and explore the map"
+						title="Close results"
+					>
+						×
+					</button>
+				</div>
 				<div class="fav-list">
 					{#if visibleStations.length === 0}
 						<p class="fav-empty">no results</p>
@@ -1754,6 +1821,34 @@
 
 	.hud-search-panel .fav-list {
 		max-height: 60vh;
+	}
+
+	.search-panel-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		padding: 0.3rem 0.5rem;
+		background: var(--panel-bg);
+		backdrop-filter: blur(10px);
+	}
+
+	.search-panel-count {
+		color: rgba(255, 255, 255, 0.7);
+		font-size: 0.62rem;
+		letter-spacing: 0.02em;
+		text-transform: lowercase;
+	}
+
+	.search-panel-close {
+		padding: 0.1rem 0.4rem;
+		color: var(--ink);
+		font-size: 1.1rem;
+		transition: color 0.1s ease;
+	}
+
+	.search-panel-close:hover {
+		color: var(--orange);
 	}
 
 	.filter-row,
@@ -1951,6 +2046,16 @@
 		padding: 0.5rem 0;
 		border-top: 1px solid rgba(var(--accent-rgb), 0.2);
 		border-bottom: 1px solid rgba(var(--accent-rgb), 0.2);
+	}
+
+	.track-empty {
+		margin: 0.6rem 0 0;
+		padding: 0.5rem 0;
+		border-top: 1px solid rgba(var(--accent-rgb), 0.2);
+		border-bottom: 1px solid rgba(var(--accent-rgb), 0.2);
+		color: rgba(255, 255, 255, 0.45);
+		font-size: 0.7rem;
+		text-transform: lowercase;
 	}
 
 	.track-artist,
@@ -2403,6 +2508,13 @@
 
 		.filter-row {
 			gap: 0.2rem;
+			transition: width 0.5s ease;
+		}
+
+		/* With the right-hand controls hidden, let the search field claim the whole
+		   top line instead of only hugging its content. */
+		.filter-row.search-expanded {
+			width: 100%;
 		}
 
 		.metric-row {
@@ -2436,7 +2548,7 @@
 
 		.compact-station-row {
 			display: grid;
-			grid-template-columns: auto minmax(0, 1fr) auto;
+			grid-template-columns: auto minmax(0, 1fr) auto auto;
 			align-items: center;
 			gap: 0.45rem;
 			min-width: 0;
@@ -2471,6 +2583,19 @@
 			display: block;
 			padding: 0.2rem 0.25rem;
 			font-size: 0.65rem;
+		}
+
+		.compact-player-expand {
+			justify-self: end;
+			padding: 0.35rem 0.55rem;
+			font-size: 1.2rem;
+			color: var(--ink);
+			transition: color 0.1s ease;
+		}
+
+		.compact-player-expand.active,
+		.compact-player-expand:hover {
+			color: var(--orange);
 		}
 
 		.compact-player-panel {
@@ -2755,10 +2880,21 @@
 
 	@media (max-width: 42rem) {
 		.hud-fav-panel {
-			top: 3rem;
+			top: 0.75rem;
 			right: 0.75rem;
 			left: auto;
 			max-width: calc(100vw - 1.5rem);
+			transition:
+				opacity 0.2s ease,
+				visibility 0.2s ease;
+		}
+
+		/* Search and the icon row share the top line; once search expands it needs
+		   the full width, so the right-hand controls step aside. */
+		.hud-fav-panel.search-active {
+			opacity: 0;
+			visibility: hidden;
+			pointer-events: none;
 		}
 
 		.fav-list,
