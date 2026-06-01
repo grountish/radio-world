@@ -622,7 +622,7 @@
 
 		if (isMobile) {
 			return {
-				markerScale: (0.025 + 2.975 * currentZoomScale) * densityScale,
+				markerScale: (0.018 + 1.9 * currentZoomScale) * densityScale,
 				hitScale: (0.3 + 4.2 * currentZoomScale) * hitDensityScale
 			};
 		}

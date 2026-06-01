@@ -357,6 +357,14 @@
 
 	const favoriteStations = $derived(playableStations.filter((s) => favoriteIds.has(s.id)));
 	const playingStation = $derived(isPlaying ? selectedStation : null);
+	const canPlayNextFavorite = $derived.by(() => {
+		const currentStation = selectedStation;
+		if (!isPlaying || !currentStation || favoriteStations.length < 2) {
+			return false;
+		}
+
+		return favoriteStations.some((station) => station.id === currentStation.id);
+	});
 
 	function isIgnorablePlaybackError(error: unknown) {
 		if (error instanceof DOMException) {
@@ -394,6 +402,25 @@
 	function pickFavoriteStation(station: RadioStation) {
 		setSelectedStation(station, { focus: true });
 		void playStation(station, 'Favorite station playback failed');
+	}
+
+	function playNextFavorite() {
+		const currentStation = selectedStation;
+		if (!currentStation || !isPlaying || favoriteStations.length < 2) {
+			return;
+		}
+
+		const currentIndex = favoriteStations.findIndex(
+			(station) => station.id === currentStation.id
+		);
+
+		if (currentIndex < 0) {
+			return;
+		}
+
+		const nextStation = favoriteStations[(currentIndex + 1) % favoriteStations.length];
+		setSelectedStation(nextStation, { focus: true });
+		void playStation(nextStation, 'Next favorite playback failed');
 	}
 
 	function toggleFavorite(id: string) {
@@ -1446,6 +1473,16 @@
 										<span class="play-icon"></span>
 									{/if}
 								</button>
+								<button
+									type="button"
+									class="player-button player-button-next"
+									onclick={playNextFavorite}
+									disabled={!canPlayNextFavorite}
+									aria-label="Play next favorite station"
+									title="Next favorite"
+								>
+									|&gt;&gt;
+								</button>
 							</div>
 
 							<ScrambleText
@@ -1592,6 +1629,16 @@
 									{:else}
 										<span class="play-icon"></span>
 									{/if}
+								</button>
+								<button
+									type="button"
+									class="player-button player-button-next"
+									onclick={playNextFavorite}
+									disabled={!canPlayNextFavorite}
+									aria-label="Play next favorite station"
+									title="Next favorite"
+								>
+									|&gt;&gt;
 								</button>
 							</div>
 
@@ -2210,6 +2257,19 @@
 		background: rgba(0, 0, 0, 0.54);
 	}
 
+	.player-button-next {
+		width: auto;
+		min-width: 2.8rem;
+		padding: 0 0.45rem;
+		font-size: 0.8rem;
+		letter-spacing: 0.02em;
+	}
+
+	.player-button:disabled {
+		opacity: 0.38;
+		cursor: default;
+	}
+
 	.play-icon {
 		width: 0;
 		height: 0;
@@ -2607,6 +2667,11 @@
 		.player-button {
 			width: 1.8rem;
 			height: 1.8rem;
+		}
+
+		.player-button-next {
+			width: auto;
+			min-width: 2.35rem;
 		}
 
 		.compact-fav-button {

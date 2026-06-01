@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.30';
+export const APP_VERSION = '0.0.31';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,17 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.30',
+		version: '0.0.31',
 		label: 'current',
+		fixes: [
+			'added a next-favorite control in both player layouts so playback can advance through the current favorites list',
+			'disabled the next-favorite control unless the active station is part of a multi-station favorites queue',
+			'reduced mobile globe marker scale so dense station clusters are less oversized on smaller screens'
+		]
+	},
+	{
+		version: '0.0.30',
+		label: 'previous',
 		fixes: [
 			'added J1 Radio Gold from Tokyo as a curated station with its browser-playable showa/jpop stream',
 			'wired the J1 whatweplay feed so the player shows live artist and title for the Gold channel'
