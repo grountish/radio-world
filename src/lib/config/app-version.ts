@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.31';
+export const APP_VERSION = '0.0.33';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,26 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.31',
+		version: '0.0.33',
 		label: 'current',
+		fixes: [
+			'replaced the random control text with a dice icon so it reads as a single-purpose action at a glance',
+			'moved the random control into the left filter row beside the HD toggle so it is available before station selection',
+			'removed the duplicate random button from the player so the playback controls stay lean'
+		]
+	},
+	{
+		version: '0.0.32',
+		label: 'previous',
+		fixes: [
+			'added a random-station control that is available before and during playback',
+			'biased random picks toward non-favorite stations sharing tags with your favorites before falling back to the rest of the visible catalog',
+			'kept the picker fully random when no favorites exist and avoid replaying the current station when another option is available'
+		]
+	},
+	{
+		version: '0.0.31',
+		label: 'previous',
 		fixes: [
 			'added a next-favorite control in both player layouts so playback can advance through the current favorites list',
 			'disabled the next-favorite control unless the active station is part of a multi-station favorites queue',

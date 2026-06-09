@@ -5,6 +5,7 @@
 	import { APP_THEMES, DEFAULT_THEME_ID } from '$lib/config/app-theme';
 	import { VERSION_HISTORY } from '$lib/config/app-version';
 	import type { RadioStation, RadioStationPayload } from '$lib/types/radio';
+	import { pickRandomStation } from '$lib/utils/random-station';
 	import { buildRadioUrl, parseRadioUrlState } from '$lib/utils/radio-url';
 	import {
 		extractTrackMetadataFromCueValue,
@@ -356,6 +357,7 @@
 	});
 
 	const favoriteStations = $derived(playableStations.filter((s) => favoriteIds.has(s.id)));
+	const canPickRandomStation = $derived(visibleStations.length > 0);
 	const playingStation = $derived(isPlaying ? selectedStation : null);
 	const canPlayNextFavorite = $derived.by(() => {
 		const currentStation = selectedStation;
@@ -404,15 +406,28 @@
 		void playStation(station, 'Favorite station playback failed');
 	}
 
+	function playRandomStation() {
+		const nextStation = pickRandomStation({
+			candidates: visibleStations,
+			currentStationId: selectedStation?.id ?? '',
+			favoriteStations
+		});
+
+		if (!nextStation) {
+			return;
+		}
+
+		setSelectedStation(nextStation, { focus: true });
+		void playStation(nextStation, 'Random station playback failed');
+	}
+
 	function playNextFavorite() {
 		const currentStation = selectedStation;
 		if (!currentStation || !isPlaying || favoriteStations.length < 2) {
 			return;
 		}
 
-		const currentIndex = favoriteStations.findIndex(
-			(station) => station.id === currentStation.id
-		);
+		const currentIndex = favoriteStations.findIndex((station) => station.id === currentStation.id);
 
 		if (currentIndex < 0) {
 			return;
@@ -1236,6 +1251,24 @@
 	</svg>
 {/snippet}
 
+{#snippet diceSvg()}
+	<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+		<rect
+			x="4.5"
+			y="4.5"
+			width="15"
+			height="15"
+			rx="1.5"
+			stroke="currentColor"
+			stroke-width="1.6"
+		/>
+		<circle cx="9" cy="9" r="1.1" fill="currentColor" />
+		<circle cx="15" cy="15" r="1.1" fill="currentColor" />
+		<circle cx="15" cy="9" r="1.1" fill="currentColor" />
+		<circle cx="9" cy="15" r="1.1" fill="currentColor" />
+	</svg>
+{/snippet}
+
 <div
 	class="page-shell"
 	style={themeCssVars}
@@ -1321,6 +1354,19 @@
 					title="192+ kbps"
 				>
 					<div class="filter-toggle-content"><span> HD</span> <span>♪</span></div>
+				</button>
+
+				<button
+					class="ghost-button random-filter-button"
+					type="button"
+					onclick={playRandomStation}
+					disabled={!canPickRandomStation}
+					aria-label="Play a random station"
+					title="Random station"
+				>
+					<span class="random-icon" aria-hidden="true">
+						{@render diceSvg()}
+					</span>
 				</button>
 
 				{#if query || country !== 'all' || hiQualityOnly}
@@ -1723,9 +1769,9 @@
 									<dt>pinned + tap</dt>
 									<dd>move the pinned list to another cluster</dd>
 									<dt>top controls</dt>
-									<dd>search, hd filter, favorites, stats, version log, theme</dd>
+									<dd>search, hd filter, random, favorites, stats, version log, theme</dd>
 									<dt>player</dt>
-									<dd>appears after you pick a station</dd>
+									<dd>appears after you pick a station or use random</dd>
 								{:else}
 									<dt>drag</dt>
 									<dd>orbit the globe</dd>
@@ -1740,9 +1786,9 @@
 									<dt>pinned + click</dt>
 									<dd>move the pinned list to another cluster</dd>
 									<dt>top controls</dt>
-									<dd>search, hd filter, favorites, stats, version log, theme</dd>
+									<dd>search, hd filter, random, favorites, stats, version log, theme</dd>
 									<dt>player</dt>
-									<dd>appears after you pick a station</dd>
+									<dd>appears after you pick a station or use random</dd>
 								{/if}
 							</dl>
 						{/if}
@@ -2025,6 +2071,11 @@
 		cursor: pointer;
 	}
 
+	.ghost-button:disabled {
+		opacity: 0.38;
+		cursor: default;
+	}
+
 	.filter-toggle {
 		color: white;
 		transition: all 0.1s;
@@ -2047,6 +2098,19 @@
 	.filter-toggle.active {
 		background: rgba(var(--accent-rgb), 0.15);
 		color: var(--orange);
+	}
+
+	.random-filter-button {
+		width: 2rem;
+		display: grid;
+		place-items: center;
+		color: var(--ink);
+	}
+
+	.random-filter-button:hover,
+	.random-filter-button:focus-visible {
+		color: var(--orange);
+		outline: none;
 	}
 
 	.panel-toggle-row {
@@ -2738,6 +2802,12 @@
 		color: var(--orange);
 	}
 
+	.fav-toggle:disabled {
+		opacity: 0.38;
+		cursor: default;
+		color: var(--ink);
+	}
+
 	.icon-toggle-button {
 		display: inline-flex;
 		align-items: center;
@@ -2756,6 +2826,30 @@
 		width: 1.05rem;
 		height: 1.05rem;
 		font-size: 1.05rem;
+		line-height: 1;
+	}
+
+	.random-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1rem;
+		height: 1rem;
+		flex-shrink: 0;
+	}
+
+	.random-icon svg {
+		display: block;
+		width: 100%;
+		height: 100%;
+	}
+
+	.random-filter-button .random-icon {
+		width: 0.95rem;
+		height: 0.95rem;
+	}
+
+	.random-filter-button .random-icon svg {
 		line-height: 1;
 	}
 
