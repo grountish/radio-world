@@ -18,6 +18,8 @@
 	type HlsClass = typeof import('hls.js').default;
 	type HlsInstance = import('hls.js').default;
 
+	const SHAZAM_URL = 'https://www.shazam.com/';
+
 	let stations = $state<RadioStation[]>([]);
 	let stats = $state<RadioStationPayload['stats'] | null>(null);
 	let isLoading = $state(true);
@@ -1736,6 +1738,13 @@
 								<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 								<a href={stats.source} target="_blank" rel="noreferrer">Source</a>
 							{/if}
+							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+							<a
+								href={SHAZAM_URL}
+								target="_blank"
+								rel="noreferrer"
+								title="Identify the current track with Shazam">trackID?</a
+							>
 						</div>
 					</div>
 				</div>

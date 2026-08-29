@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.33';
+export const APP_VERSION = '0.0.34';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,15 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.33',
+		version: '0.0.34',
 		label: 'current',
+		fixes: [
+			'added a trackID? link in the player footer that opens Shazam in a new tab so you can identify the song that is playing'
+		]
+	},
+	{
+		version: '0.0.33',
+		label: 'previous',
 		fixes: [
 			'replaced the random control text with a dice icon so it reads as a single-purpose action at a glance',
 			'moved the random control into the left filter row beside the HD toggle so it is available before station selection',
