@@ -33,21 +33,15 @@ function buildId3Tag(frames: Uint8Array[]) {
 		offset += frame.length;
 	}
 
-	return new Uint8Array([
-		0x49,
-		0x44,
-		0x33,
-		4,
-		0,
-		0,
-		...encodeSynchsafe(body.length),
-		...body
-	]);
+	return new Uint8Array([0x49, 0x44, 0x33, 4, 0, 0, ...encodeSynchsafe(body.length), ...body]);
 }
 
 describe('stream metadata helpers', () => {
 	it('extracts artist and title from ID3 text frames', () => {
-		const tag = buildId3Tag([buildTextFrame('TPE1', 'Nina Simone'), buildTextFrame('TIT2', 'Sinnerman')]);
+		const tag = buildId3Tag([
+			buildTextFrame('TPE1', 'Nina Simone'),
+			buildTextFrame('TIT2', 'Sinnerman')
+		]);
 		expect(extractTrackMetadataFromId3(tag)).toEqual({
 			artist: 'Nina Simone',
 			title: 'Sinnerman'
@@ -67,7 +61,9 @@ describe('stream metadata helpers', () => {
 	});
 
 	it('extracts and splits ICY StreamTitle metadata', () => {
-		expect(extractTrackMetadataFromIcyMetadata("StreamTitle='DJ Shadow - Midnight In A Perfect World';")).toEqual({
+		expect(
+			extractTrackMetadataFromIcyMetadata("StreamTitle='DJ Shadow - Midnight In A Perfect World';")
+		).toEqual({
 			artist: 'DJ Shadow',
 			title: 'Midnight In A Perfect World'
 		});

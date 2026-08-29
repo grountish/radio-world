@@ -155,10 +155,7 @@ function readSynchsafeInteger(bytes: Uint8Array) {
 	}
 
 	return (
-		((bytes[0] ?? 0) << 21) |
-		((bytes[1] ?? 0) << 14) |
-		((bytes[2] ?? 0) << 7) |
-		(bytes[3] ?? 0)
+		((bytes[0] ?? 0) << 21) | ((bytes[1] ?? 0) << 14) | ((bytes[2] ?? 0) << 7) | (bytes[3] ?? 0)
 	);
 }
 
@@ -172,10 +169,7 @@ function readFrameSize(version: number, bytes: Uint8Array) {
 	}
 
 	return (
-		((bytes[0] ?? 0) << 24) |
-		((bytes[1] ?? 0) << 16) |
-		((bytes[2] ?? 0) << 8) |
-		(bytes[3] ?? 0)
+		((bytes[0] ?? 0) << 24) | ((bytes[1] ?? 0) << 16) | ((bytes[2] ?? 0) << 8) | (bytes[3] ?? 0)
 	);
 }
 
@@ -308,7 +302,9 @@ export function extractTrackMetadataFromId3(data: Uint8Array): TrackMetadata | n
 	let artist = '';
 
 	while (offset + 10 <= tagEnd) {
-		const frameId = decodeLatin1(data.subarray(offset, offset + 4)).replace(/\0/g, '').trim();
+		const frameId = decodeLatin1(data.subarray(offset, offset + 4))
+			.replace(/\0/g, '')
+			.trim();
 		if (!frameId) {
 			break;
 		}

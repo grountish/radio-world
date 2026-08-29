@@ -8,7 +8,7 @@ const londonLon = -0.1276;
 const orokoHomepage = 'https://oroko.live/';
 const orokoFavicon = 'https://oroko.live/favicon.ico';
 const accraLat = 5.6037;
-const accraLon = -0.1870;
+const accraLon = -0.187;
 
 const worldwideFmHomepage = 'https://worldwidefm.net/';
 const worldwideFmFavicon = 'https://worldwidefm.net/favicon.ico';
