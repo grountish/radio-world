@@ -17,6 +17,7 @@
 
 	type HlsClass = typeof import('hls.js').default;
 	type HlsInstance = import('hls.js').default;
+	type PlaybackStatus = 'idle' | 'buffering' | 'ready' | 'error' | 'reconnecting';
 
 	const SHAZAM_URL = 'https://www.shazam.com/';
 
@@ -39,7 +40,7 @@
 	let playerExpanded = $state(false);
 	let isPlaying = $state(false);
 	let isBuffering = $state(false);
-	let playbackStatus = $state<'idle' | 'buffering' | 'ready' | 'error'>('idle');
+	let playbackStatus = $state<PlaybackStatus>('idle');
 	let isMuted = $state(false);
 	let volume = $state(0.85);
 	let elapsed = $state(0);
@@ -47,6 +48,13 @@
 	let loadedStreamUrl = '';
 	let hlsPlayer: HlsInstance | null = null;
 	let hlsClass: HlsClass | null = null;
+	let playbackIntent: 'stopped' | 'playing' = 'stopped';
+	let playedStationId = '';
+	let reconnectAttempt = $state(0);
+	let reconnectTimeoutId = 0;
+	let lastPlaybackProgressAt = 0;
+	let blockedPlaybackAttempts = 0;
+	let playbackWatchdogId = 0;
 	let metadataMonitorController: AbortController | null = null;
 	let metadataMonitorKey = '';
 	let sourcePreparationKey = '';
@@ -76,7 +84,20 @@
 
 	const initialLoadingAnimationMs = 650;
 	const loadingScrambleLoopMs = 1300;
+	// Auto-reconnect tuning. Backoff is per consecutive failure and resets as soon
+	// as the stream actually produces audio again.
+	const reconnectBackoffMs = [800, 1500, 3000, 6000, 10000, 20000, 30000];
+	const playbackStallTimeoutMs = 12000;
+	const playbackWatchdogIntervalMs = 4000;
+	const coldStartAttemptsBeforeQuarantine = 3;
 	const hasActiveFilters = $derived(query.trim().length > 0 || country !== 'all' || hiQualityOnly);
+	const playbackStatusLabel = $derived(
+		playbackStatus === 'reconnecting'
+			? `reconnecting${reconnectAttempt > 1 ? ` (${reconnectAttempt})` : ''}`
+			: playbackStatus === 'buffering'
+				? 'buffering'
+				: 'Live Radio'
+	);
 	const showSearchPanel = $derived(hasActiveFilters && !searchResultsDismissed);
 	const focusKey = $derived(
 		`${query.trim().toLowerCase()}|${country}|${hiQualityOnly ? '1' : '0'}`
@@ -133,6 +154,11 @@
 	function setSelectedStation(station: RadioStation | null, options?: { focus?: boolean }) {
 		const nextId = station?.id ?? '';
 		const previousId = untrack(() => selectedStation?.id ?? '');
+
+		if (nextId !== previousId) {
+			cancelReconnect();
+		}
+
 		selectedStation = station;
 
 		if (options?.focus && nextId && nextId !== previousId) {
@@ -256,11 +282,15 @@
 		})();
 
 		if (typeof window !== 'undefined') {
-			window.addEventListener('online', () => (isOnline = true));
-			window.addEventListener('offline', () => (isOnline = false));
+			isOnline = navigator.onLine !== false;
+			window.addEventListener('online', handleNetworkOnline);
+			window.addEventListener('offline', handleNetworkOffline);
 			window.addEventListener('resize', updateViewportState);
 			window.addEventListener('popstate', handlePopState);
 			window.addEventListener('keydown', handleKeyDown);
+			document.addEventListener('visibilitychange', handleVisibilityChange);
+			registerMediaSessionHandlers();
+			startPlaybackWatchdog();
 		}
 
 		urlStateReady = true;
@@ -271,10 +301,15 @@
 			window.clearTimeout(globeMountTimeoutId);
 			destroyHlsPlayer();
 			stopTrackMetadataMonitor();
+			stopPlaybackIntent();
+			stopPlaybackWatchdog();
 			if (typeof window !== 'undefined') {
+				window.removeEventListener('online', handleNetworkOnline);
+				window.removeEventListener('offline', handleNetworkOffline);
 				window.removeEventListener('resize', updateViewportState);
 				window.removeEventListener('popstate', handlePopState);
 				window.removeEventListener('keydown', handleKeyDown);
+				document.removeEventListener('visibilitychange', handleVisibilityChange);
 			}
 		};
 	});
@@ -369,23 +404,6 @@
 
 		return favoriteStations.some((station) => station.id === currentStation.id);
 	});
-
-	function isIgnorablePlaybackError(error: unknown) {
-		if (error instanceof DOMException) {
-			return error.name === 'NotAllowedError' || error.name === 'AbortError';
-		}
-
-		if (error instanceof Error) {
-			const details = `${error.name} ${error.message}`.toLowerCase();
-			return (
-				details.includes('notallowederror') ||
-				details.includes('aborterror') ||
-				details.includes('interrupted')
-			);
-		}
-
-		return false;
-	}
 
 	function quarantineFailedStation(station: RadioStation) {
 		failedStationIds = new Set([...failedStationIds, station.id]);
@@ -580,9 +598,9 @@
 		elapsed = audioElement.currentTime;
 	}
 
-	function setPlaybackStatus(nextStatus: 'idle' | 'buffering' | 'ready' | 'error') {
+	function setPlaybackStatus(nextStatus: PlaybackStatus) {
 		playbackStatus = nextStatus;
-		isBuffering = nextStatus === 'buffering';
+		isBuffering = nextStatus === 'buffering' || nextStatus === 'reconnecting';
 	}
 
 	function isHlsStreamUrl(streamUrl: string) {
@@ -855,6 +873,32 @@
 					);
 				};
 
+				const handleLifetimeError = (
+					_event: string,
+					data: { fatal: boolean; details?: string; type?: string }
+				) => {
+					// Load-time fatals are owned by handleError above; this covers drops
+					// that happen once the stream is already running.
+					if (!settled || !data.fatal || hlsPlayer !== player) {
+						return;
+					}
+
+					if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+						player.startLoad();
+						return;
+					}
+
+					if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+						player.recoverMediaError();
+						return;
+					}
+
+					if (playbackIntent === 'playing') {
+						scheduleReconnect();
+					}
+				};
+
+				player.on(Hls.Events.ERROR, handleLifetimeError);
 				player.on(Hls.Events.MEDIA_ATTACHED, handleMediaAttached);
 				player.on(Hls.Events.MANIFEST_PARSED, handleManifestParsed);
 				player.on(Hls.Events.FRAG_PARSING_METADATA, handleFragParsingMetadata);
@@ -888,6 +932,7 @@
 		sourcePreparationKey = preparationKey;
 		sourcePreparationPromise = (async () => {
 			if (!station) {
+				stopPlaybackIntent();
 				stopTrackMetadataMonitor();
 				currentTrackArtist = '';
 				currentTrackTitle = '';
@@ -947,21 +992,272 @@
 		}
 	}
 
+	function markPlaybackProgress() {
+		lastPlaybackProgressAt = Date.now();
+	}
+
+	function startPlaybackWatchdog() {
+		if (typeof window === 'undefined' || playbackWatchdogId) {
+			return;
+		}
+
+		playbackWatchdogId = window.setInterval(() => {
+			if (playbackIntent !== 'playing' || reconnectTimeoutId || !audioElement) {
+				return;
+			}
+
+			const stalledForMs = Date.now() - lastPlaybackProgressAt;
+			if (stalledForMs < playbackStallTimeoutMs) {
+				return;
+			}
+
+			// Silent stalls do not always fire `error` or `stalled`, so catch the case
+			// where the element still claims to be playing but no data is moving.
+			if (!audioElement.paused || playbackStatus === 'error') {
+				scheduleReconnect();
+			}
+		}, playbackWatchdogIntervalMs);
+	}
+
+	function stopPlaybackWatchdog() {
+		if (playbackWatchdogId) {
+			window.clearInterval(playbackWatchdogId);
+			playbackWatchdogId = 0;
+		}
+	}
+
+	function resumeAfterNetworkWake() {
+		if (playbackIntent !== 'playing' || !selectedStation) {
+			return;
+		}
+
+		const isFlowing =
+			Boolean(audioElement && !audioElement.paused) && Date.now() - lastPlaybackProgressAt < 2000;
+		if (isFlowing) {
+			return;
+		}
+
+		clearReconnectTimer();
+		reconnectAttempt = 0;
+		void reconnectStream();
+	}
+
+	function handleNetworkOnline() {
+		isOnline = true;
+		resumeAfterNetworkWake();
+	}
+
+	function handleNetworkOffline() {
+		isOnline = false;
+		if (playbackIntent === 'playing') {
+			setPlaybackStatus('reconnecting');
+		}
+	}
+
+	function handleVisibilityChange() {
+		if (typeof document === 'undefined' || document.visibilityState !== 'visible') {
+			return;
+		}
+
+		resumeAfterNetworkWake();
+	}
+
+	function updateMediaSessionMetadata() {
+		if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) {
+			return;
+		}
+
+		const station = selectedStation;
+		if (!station) {
+			navigator.mediaSession.metadata = null;
+			return;
+		}
+
+		navigator.mediaSession.metadata = new MediaMetadata({
+			title: currentTrackTitle || station.name,
+			artist: currentTrackArtist || station.country || 'Radio World',
+			album: station.name,
+			artwork: station.favicon ? [{ src: station.favicon }] : []
+		});
+	}
+
+	function registerMediaSessionHandlers() {
+		if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) {
+			return;
+		}
+
+		const session = navigator.mediaSession;
+		const safeSet = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+			try {
+				session.setActionHandler(action, handler);
+			} catch {
+				// Action unsupported on this browser; ignore.
+			}
+		};
+
+		safeSet('play', () => {
+			if (selectedStation) {
+				void playStation(selectedStation, 'Media session play failed');
+			}
+		});
+		safeSet('pause', () => {
+			if (!audioElement) {
+				return;
+			}
+
+			stopPlaybackIntent();
+			audioElement.pause();
+			setPlaybackStatus('ready');
+		});
+		safeSet('stop', () => {
+			if (!audioElement) {
+				return;
+			}
+
+			stopPlaybackIntent();
+			audioElement.pause();
+			setPlaybackStatus('ready');
+		});
+		safeSet('nexttrack', () => playNextFavorite());
+		safeSet('previoustrack', () => playNextFavorite());
+	}
+
+	function isOffline() {
+		return typeof navigator !== 'undefined' && navigator.onLine === false;
+	}
+
+	function isBlockedPlaybackError(cause: unknown) {
+		if (cause instanceof DOMException) {
+			return cause.name === 'NotAllowedError';
+		}
+
+		return cause instanceof Error && cause.name.toLowerCase().includes('notallowederror');
+	}
+
+	function isAbortedPlaybackError(cause: unknown) {
+		if (cause instanceof DOMException) {
+			return cause.name === 'AbortError';
+		}
+
+		if (cause instanceof Error) {
+			const details = `${cause.name} ${cause.message}`.toLowerCase();
+			return details.includes('aborterror') || details.includes('interrupted');
+		}
+
+		return false;
+	}
+
+	function clearReconnectTimer() {
+		if (reconnectTimeoutId) {
+			window.clearTimeout(reconnectTimeoutId);
+			reconnectTimeoutId = 0;
+		}
+	}
+
+	function cancelReconnect() {
+		clearReconnectTimer();
+		reconnectAttempt = 0;
+	}
+
+	function stopPlaybackIntent() {
+		playbackIntent = 'stopped';
+		cancelReconnect();
+	}
+
+	function scheduleReconnect() {
+		if (playbackIntent !== 'playing' || !selectedStation || reconnectTimeoutId) {
+			return;
+		}
+
+		const delay = reconnectBackoffMs[Math.min(reconnectAttempt, reconnectBackoffMs.length - 1)];
+		reconnectAttempt += 1;
+		setPlaybackStatus('reconnecting');
+		reconnectTimeoutId = window.setTimeout(() => {
+			reconnectTimeoutId = 0;
+			void reconnectStream();
+		}, delay);
+	}
+
+	async function reconnectStream() {
+		const station = selectedStation;
+		if (playbackIntent !== 'playing' || !station || !audioElement) {
+			return;
+		}
+
+		setPlaybackStatus('reconnecting');
+
+		if (isOffline()) {
+			// No point burning a request; the `online` listener retries immediately.
+			scheduleReconnect();
+			return;
+		}
+
+		try {
+			// Force a full source rebuild so a half-dead socket is never reused.
+			loadedStationId = '';
+			loadedStreamUrl = '';
+			await prepareSelectedStationAudio(station);
+			markPlaybackProgress();
+			await audioElement.play();
+		} catch (cause) {
+			handlePlaybackFailure(station, cause, 'Reconnect failed');
+		}
+	}
+
+	function handlePlaybackFailure(station: RadioStation, cause: unknown, failureLabel: string) {
+		console.warn(failureLabel, cause);
+
+		if (isAbortedPlaybackError(cause)) {
+			// Another load superseded this one; that load owns the outcome.
+			return;
+		}
+
+		if (playbackIntent !== 'playing') {
+			setPlaybackStatus('error');
+			return;
+		}
+
+		if (isBlockedPlaybackError(cause)) {
+			blockedPlaybackAttempts += 1;
+			if (blockedPlaybackAttempts >= 3) {
+				// Autoplay is blocked; retrying cannot help until the user acts again.
+				stopPlaybackIntent();
+				setPlaybackStatus('error');
+				return;
+			}
+		}
+
+		const hasPlayedBefore = playedStationId === station.id;
+		const isDeadStation =
+			!hasPlayedBefore && !isOffline() && reconnectAttempt >= coldStartAttemptsBeforeQuarantine;
+
+		if (isDeadStation) {
+			// Only blacklist a station that never played and keeps failing while online.
+			stopPlaybackIntent();
+			quarantineFailedStation(station);
+			setPlaybackStatus('error');
+			return;
+		}
+
+		scheduleReconnect();
+	}
+
 	async function playStation(station: RadioStation, failureLabel: string) {
 		if (!audioElement) {
 			return;
 		}
 
+		playbackIntent = 'playing';
+		blockedPlaybackAttempts = 0;
+		clearReconnectTimer();
+
 		try {
 			await prepareSelectedStationAudio(station);
 			setPlaybackStatus('buffering');
+			markPlaybackProgress();
 			await audioElement.play();
 		} catch (error) {
-			setPlaybackStatus('error');
-			if (!isIgnorablePlaybackError(error)) {
-				quarantineFailedStation(station);
-			}
-			console.warn(failureLabel, error);
+			handlePlaybackFailure(station, error, failureLabel);
 		}
 	}
 
@@ -975,6 +1271,7 @@
 			return;
 		}
 
+		stopPlaybackIntent();
 		audioElement.pause();
 		setPlaybackStatus('ready');
 	}
@@ -1035,22 +1332,45 @@
 		};
 		const handlePause = () => {
 			isPlaying = false;
+			if (playbackIntent === 'playing') {
+				// Unexpected pause (audio focus, OS): leave status to the reconnect logic
+				// so a stall does not look like a clean stop.
+				return;
+			}
+
 			setPlaybackStatus(selectedStation ? 'ready' : 'idle');
 		};
 		const handleWaiting = () => {
-			setPlaybackStatus('buffering');
+			setPlaybackStatus(reconnectAttempt > 0 ? 'reconnecting' : 'buffering');
 		};
 		const handlePlaying = () => {
 			isPlaying = true;
+			playedStationId = selectedStation?.id ?? '';
+			blockedPlaybackAttempts = 0;
+			cancelReconnect();
+			markPlaybackProgress();
 			setPlaybackStatus('ready');
 		};
 		const handleCanPlay = () => {
+			markPlaybackProgress();
+
+			if (playbackIntent === 'playing' && element.paused) {
+				void element.play().catch(() => {
+					// Watchdog retries; nothing useful to do here.
+				});
+				return;
+			}
+
 			if (!isPlaying) {
 				setPlaybackStatus('ready');
 			}
 		};
 		const handleTimeUpdate = () => {
 			elapsed = element.currentTime;
+			markPlaybackProgress();
+		};
+		const handleProgress = () => {
+			markPlaybackProgress();
 		};
 		const handleVolumeChange = () => {
 			isMuted = element.muted;
@@ -1058,11 +1378,35 @@
 		};
 		const handleEmptied = () => {
 			isPlaying = false;
-			setPlaybackStatus(selectedStation ? 'buffering' : 'idle');
+			if (!selectedStation) {
+				setPlaybackStatus('idle');
+			} else {
+				setPlaybackStatus(reconnectAttempt > 0 ? 'reconnecting' : 'buffering');
+			}
 			elapsed = 0;
+		};
+		const handleStalled = () => {
+			if (playbackIntent === 'playing') {
+				scheduleReconnect();
+			}
+		};
+		const handleEnded = () => {
+			isPlaying = false;
+			if (playbackIntent === 'playing') {
+				// A live stream never ends on purpose: the server dropped us.
+				scheduleReconnect();
+				return;
+			}
+
+			setPlaybackStatus(selectedStation ? 'ready' : 'idle');
 		};
 		const handleError = () => {
 			isPlaying = false;
+			if (playbackIntent === 'playing') {
+				scheduleReconnect();
+				return;
+			}
+
 			setPlaybackStatus('error');
 		};
 
@@ -1075,6 +1419,9 @@
 		element.addEventListener('volumechange', handleVolumeChange);
 		element.addEventListener('emptied', handleEmptied);
 		element.addEventListener('error', handleError);
+		element.addEventListener('progress', handleProgress);
+		element.addEventListener('stalled', handleStalled);
+		element.addEventListener('ended', handleEnded);
 		syncAudioState();
 
 		return () => {
@@ -1087,7 +1434,30 @@
 			element.removeEventListener('volumechange', handleVolumeChange);
 			element.removeEventListener('emptied', handleEmptied);
 			element.removeEventListener('error', handleError);
+			element.removeEventListener('progress', handleProgress);
+			element.removeEventListener('stalled', handleStalled);
+			element.removeEventListener('ended', handleEnded);
 		};
+	});
+
+	$effect(() => {
+		selectedStation;
+		currentTrackArtist;
+		currentTrackTitle;
+
+		updateMediaSessionMetadata();
+	});
+
+	$effect(() => {
+		if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) {
+			return;
+		}
+
+		navigator.mediaSession.playbackState = isPlaying
+			? 'playing'
+			: selectedStation
+				? 'paused'
+				: 'none';
 	});
 
 	$effect(() => {
@@ -1693,7 +2063,9 @@
 							<div class="player-main">
 								<div class="player-topline">
 									<div class="status-row">
-										<span class="live-pill">Live Radio</span>
+										<span class="live-pill" class:reconnecting={playbackStatus === 'reconnecting'}
+											>{playbackStatusLabel}</span
+										>
 										<span>{formatTime(elapsed)}</span>
 									</div>
 								</div>
@@ -1702,6 +2074,7 @@
 									<div
 										class="progress-fill"
 										class:buffering={playbackStatus === 'buffering'}
+										class:reconnecting={playbackStatus === 'reconnecting'}
 										class:ready={playbackStatus === 'ready'}
 										class:error={playbackStatus === 'error'}
 									></div>
@@ -2416,6 +2789,10 @@
 		font-size: 0.68rem;
 	}
 
+	.live-pill.reconnecting {
+		color: #c53b2c;
+	}
+
 	.filter-toggle-content {
 		display: flex;
 		align-items: center;
@@ -2455,6 +2832,22 @@
 			rgba(255, 217, 166, 0.9) 50%,
 			rgba(var(--accent-rgb), 0.24) 70%,
 			rgba(var(--accent-rgb), 0.08) 100%
+		);
+		background-size: 220% 100%;
+		background-position: 100% 0;
+		animation: loading-sweep 1.35s linear infinite;
+	}
+
+	.progress-fill.reconnecting {
+		width: 100%;
+		opacity: 0.95;
+		background: linear-gradient(
+			90deg,
+			rgba(197, 59, 44, 0.08) 0%,
+			rgba(197, 59, 44, 0.3) 30%,
+			rgba(255, 168, 148, 0.9) 50%,
+			rgba(197, 59, 44, 0.3) 70%,
+			rgba(197, 59, 44, 0.08) 100%
 		);
 		background-size: 220% 100%;
 		background-position: 100% 0;

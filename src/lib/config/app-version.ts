@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.34';
+export const APP_VERSION = '0.0.35';
 export const APP_USER_AGENT = `radio-world/${APP_VERSION}`;
 
 export type VersionHistoryEntry = {
@@ -9,8 +9,21 @@ export type VersionHistoryEntry = {
 
 export const VERSION_HISTORY: VersionHistoryEntry[] = [
 	{
-		version: '0.0.34',
+		version: '0.0.35',
 		label: 'current',
+		fixes: [
+			'playback now reconnects on its own after a dropout instead of leaving you on a dead stream, with exponential backoff that resets as soon as audio flows again',
+			'added a stall watchdog that rebuilds the stream when audio silently stops moving without firing an error',
+			'reconnects immediately when the device comes back online or the tab becomes visible again',
+			'HLS streams now recover fatal network and media errors in place instead of dying mid-stream',
+			'stations are no longer blacklisted and dropped from favorites because of a temporary connection loss',
+			'added lock screen and car/bluetooth media controls (play, pause, next favorite) via the Media Session API',
+			'player shows a reconnecting state with the attempt count instead of a silent stall'
+		]
+	},
+	{
+		version: '0.0.34',
+		label: 'previous',
 		fixes: [
 			'added a trackID? link in the player footer that opens Shazam in a new tab so you can identify the song that is playing'
 		]
